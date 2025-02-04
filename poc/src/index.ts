@@ -205,6 +205,28 @@ async function run(ws: WebSocket) {
 	});
 }
 
+async function subscribe_stream(client: Client, producer: Producer, transport: Transport, receiveMediaStream: MediaStream, receivePreview: HTMLVideoElement) {
+
+	const stream_id = producer.appData.stream_id as string;
+
+	console.log("subscribing stream", stream_id);
+	const rsp = await client.subscribe(gState.room_id, transport.id, stream_id, producer.id);
+	console.log("subscribed", rsp);
+
+	const consumer = await transport.consume({
+		id: rsp.consumerId, 
+		producerId: producer.id, 
+		kind: producer.kind, 
+		rtpParameters: rsp.rtpParameters, 
+		streamId: stream_id,
+	});
+
+	console.log(`${consumer.kind} consumer created:`, consumer);
+
+	receiveMediaStream.addTrack(consumer.track);
+	receivePreview.srcObject = receiveMediaStream;
+}
+
 async function subscribe_streams() {
 	if (!gState.producers || !gState.client || !gState.device) {
 		return;
@@ -257,30 +279,46 @@ async function subscribe_streams() {
 	});
 
 
-	const consumers = [];
-
+	
 	const receiveMediaStream = new MediaStream();
 	
+	// const consumers = [];
+	// for (const producer of producers) {
+	// 	const stream_id = producer.appData.stream_id as string;
+	// 	console.log("subscribing stream", stream_id);
+	// 	const rsp = await client.subscribe(gState.room_id, consumerTransportId, stream_id, producer.id);
+	// 	console.log("subscribed", rsp);
+
+	// 	const consumer = await (consumerTransport as Transport).consume({
+	// 		id: rsp.consumerId, 
+	// 		producerId: producer.id, 
+	// 		kind: producer.kind, 
+	// 		rtpParameters: rsp.rtpParameters, 
+	// 		streamId: stream_id,
+	// 	});
+
+	// 	console.log(`${consumer.kind} consumer created:`, consumer);
+	// 	consumers.push(consumer);
+
+	// 	receiveMediaStream.addTrack(consumer.track);
+	// 	receivePreview.srcObject = receiveMediaStream;
+	// }
+
+	let promises = [];
+
 	for (const producer of producers) {
-		const stream_id = producer.appData.stream_id as string;
-		console.log("subscribing stream", stream_id);
-		const rsp = await client.subscribe(gState.room_id, consumerTransportId, stream_id, producer.id);
-		console.log("subscribed", rsp);
-
-		const consumer = await (consumerTransport as Transport).consume({
-			id: rsp.consumerId, 
-			producerId: producer.id, 
-			kind: producer.kind, 
-			rtpParameters: rsp.rtpParameters, 
-			streamId: stream_id,
-		});
-
-		console.log(`${consumer.kind} consumer created:`, consumer);
-		consumers.push(consumer);
-
-		receiveMediaStream.addTrack(consumer.track);
-		receivePreview.srcObject = receiveMediaStream;
+		promises.push(subscribe_stream(client, producer, consumerTransport, receiveMediaStream, receivePreview));
 	}
+
+	const results = await Promise.allSettled(promises);
+
+	results.forEach((result, index) => {
+		if (result.status === "fulfilled") {
+			console.log(`Data ${index + 1}:`, result.value);
+		} else {
+			console.error(`Error in request ${index + 1}:`, result.reason);
+		}
+	});
 }
 // async function sleep(ms: number) {
 //     await new Promise(resolve => setTimeout(resolve, ms));
