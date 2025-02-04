@@ -287,12 +287,6 @@ async function subscribe_streams() {
 // }
 
 async function main() {
-	const subscribe_button = document.getElementById('button_subscribe') as HTMLButtonElement | null;
-	if (subscribe_button) {
-		subscribe_button.addEventListener('click', async () => {
-			await subscribe_streams();
-		});
-	}
 
 	const button = document.getElementById('button_start') as HTMLButtonElement | null;
 	console.log('获取 button', button);
