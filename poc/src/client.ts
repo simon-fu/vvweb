@@ -1,9 +1,10 @@
 import { DtlsParameters } from 'mediasoup-client/lib/Transport';
 import { MediaKind, RtpParameters } from 'mediasoup-client/lib/RtpParameters';
+import { EventEmitter, Listener } from "./emitter";
 
-type Result<T, E> = { type: 'ok', value: T } | { type: 'err', error: E };
+// type Result<T, E> = { type: 'ok', value: T } | { type: 'err', error: E };
 
-const mediaKindMap: Record<MediaKind, number> = {
+const MEDIA_KIND_MAP: Record<MediaKind, number> = {
     audio: 1,
     video: 2
 };
@@ -13,23 +14,47 @@ const CALL_ID = "default-call";
 const CHAIN_ID = "default-chain"; // "74aea504-e8ec-4de1-ba78-ae5af4fba699"
 
 
+export interface Stream {
+	seq: number;
+	kind: number;  // 1-audio, 2-video
+	producer_id: string; 
+}
+
+
+export interface User {
+	id: string;
+	online: boolean;
+	streams: { [key: string]: Stream };
+    // streams: Map<string, Stream>;
+}
+
+
+export interface Notice {
+    room_id: string,
+    seq: number,
+    body: any,
+}
 
 export class Client {
     private ws: WebSocket;
+
+    private emitter: EventEmitter;
+
     private pendingRequests: Map< number, { 
         resolve: (value: any) => void; 
         reject: (reason?: any) => void;
     }>;
     private msgIdCounter: number;
     private sessionId: string;
-    private memberId: string;
+    private userId: string;
 
-    constructor(wsOrUrl: WebSocket | string, memberId: string) {
+    constructor(wsOrUrl: WebSocket | string, userId: string) {
         this.ws = typeof wsOrUrl === "string" ? new WebSocket(wsOrUrl) : wsOrUrl;
-        this.memberId = memberId;
+        this.userId = userId;
         this.pendingRequests = new Map();
         this.msgIdCounter = 1;
         this.sessionId = "";
+        this.emitter = new EventEmitter();
 
         this.ws.onmessage = this.handleMessage.bind(this);
         this.ws.onerror = this.handleError.bind(this);
@@ -38,6 +63,8 @@ export class Client {
 
     private handleMessage(event: MessageEvent) {
         
+        console.log("got msg", event.data);
+
         const msg = JSON.parse(event.data);
 
         if (msg.msg_type.Response) {
@@ -64,6 +91,18 @@ export class Client {
             }
 
         } else {
+
+            if (msg.msg_type.Notice) {
+                const notice = msg.msg_type.Notice;
+                const body = JSON.parse(notice.json);
+                delete notice.json;
+                notice.body = body;
+                const handled = this.trigger("notice", notice);
+                if (handled) {
+                    return;
+                }
+            }
+
             console.warn("Unhandle msg", msg);
         }
     }
@@ -96,21 +135,39 @@ export class Client {
         });
     }
 
-    public async try_invoke(req: any): Promise<Result<any, Error>> {
-        try {
-            const response = await this.invoke(req);
-            return { type: 'ok', value: response };
-        } catch (error) {
-            return { type: 'err', error: error instanceof Error ? error : new Error(String(error)) };
-        }
+    // public async try_invoke(req: any): Promise<Result<any, Error>> {
+    //     try {
+    //         const response = await this.invoke(req);
+    //         return { type: 'ok', value: response };
+    //     } catch (error) {
+    //         return { type: 'err', error: error instanceof Error ? error : new Error(String(error)) };
+    //     }
+    // }
+
+    // 添加监听器
+    public on<T>(event: string, listener: Listener<T>): void {
+        this.emitter.on(event, listener);
     }
 
-    public async open_session(): Promise<any> {
+    // 移除监听器
+    public off<T>(event: string, listener: Listener<T>): void {
+        this.emitter.off(event, listener);
+    }
+
+    // 触发事件
+    private trigger<T>(event: string, data: T): Boolean {
+        return this.emitter.emit(event, data);
+    }
+
+    public async open_session(room_id: string): Promise<any> {
         // console.log("open session ...");
         const rsp = await this.invoke({
             // msg_id: next_msg_id(),
             msg_type: {
-                OpenSession: {},
+                OpenSession: {
+                    user_id: this.userId,
+                    room_id,
+                },
             }
         });
         // console.log("opened response:", rsp.OpenSessionResponse);
@@ -125,7 +182,7 @@ export class Client {
                     appId: APP_ID, 
                     roomId, 
                     roomName: roomId, 
-                    memberId: this.memberId, 
+                    memberId: this.userId, 
                     direction: 0, // Inbound = 0, Outbound = 1
                     kind: 0,  // AudioVideo = 0, Audio = 1, Video = 2,
                     callId: CALL_ID, 
@@ -147,7 +204,7 @@ export class Client {
                     appId: APP_ID, 
                     roomId, 
                     roomName: roomId, 
-                    memberId: this.memberId, 
+                    memberId: this.userId, 
                     direction: 1, // Inbound = 0, Outbound = 1
                     kind: 0,  // AudioVideo = 0, Audio = 1, Video = 2,
                     callId: CALL_ID, 
@@ -222,7 +279,7 @@ export class Client {
                     roomId, 
                     transportId,
                     streamId,
-                    kind: mediaKindMap[kind],
+                    kind: MEDIA_KIND_MAP[kind],
                     rtpParameters,
                     audioType: 0, // RoutableAudio = 0, ExclusiveAudio = 1, PriorityRoomAudio = 2,
                     local: [],
@@ -317,3 +374,4 @@ export class Client {
         return rsp.Subscribe;
     }
 }
+
