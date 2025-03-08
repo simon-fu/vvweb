@@ -145,18 +145,18 @@ async function run(ws: WebSocket) {
 			console.log("create server producer transport ...");
 			const rsp = await client.create_producer_transport(gState.room_id);
 			console.log("created server producer transport", rsp);
+			producerTransportId = rsp.transportId;
 
-			producerTransportId = rsp.xid;
+			rsp.dtlsParameters.role = "server";
+			rsp.dtlsParameters.fingerprints = [rsp.dtlsParameters.fingerprints];
 
-			// rsp.dtlsParameters.role = "server";
-			// rsp.dtlsParameters.fingerprints = [rsp.dtlsParameters.fingerprints];
-
+			// const ext: ProducerExt = {};
 
 			producerTransport = device.createSendTransport({
 				id             : producerTransportId,
-				iceParameters  : rsp.iceParam,
+				iceParameters  : rsp.iceParameters,
 				iceCandidates  : rsp.iceCandidates,
-				dtlsParameters : rsp.dtls,
+				dtlsParameters : rsp.dtlsParameters,
 				// appData        : ext,
 				// sctpParameters : { ... }
 			});
@@ -363,7 +363,7 @@ async function subscribe_track(client: Client, room_id: string, stream_id: strin
 		id: rsp.consumerId, 
 		producerId: producer_id, 
 		kind: mediasoup_kind(stream.kind), 
-		rtpParameters: rsp.rtp, 
+		rtpParameters: rsp.rtpParameters, 
 		streamId: stream_id,
 	});
 
@@ -386,16 +386,16 @@ async function create_recv_transport() {
 		console.log("create server consumer transport ...");
 		const rsp = await client.create_consumer_transport(gState.room_id);
 		console.log("created server consumer transport", rsp);
-		consumerTransportId = rsp.xid;
+		consumerTransportId = rsp.transportId;
 
-		// rsp.dtlsParameters.role = "server";
-		// rsp.dtlsParameters.fingerprints = [rsp.dtlsParameters.fingerprints];
+		rsp.dtlsParameters.role = "server";
+		rsp.dtlsParameters.fingerprints = [rsp.dtlsParameters.fingerprints];
 
 		consumerTransport = device.createRecvTransport({
 			id             : consumerTransportId,
-			iceParameters  : rsp.iceParam,
+			iceParameters  : rsp.iceParameters,
 			iceCandidates  : rsp.iceCandidates,
-			dtlsParameters : rsp.dtls,
+			dtlsParameters : rsp.dtlsParameters,
 			// sctpParameters : { ... }
 		});
 		console.log("created local recv transport", consumerTransport);
