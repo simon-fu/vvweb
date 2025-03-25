@@ -1,0 +1,115 @@
+<!doctype html>
+<style>
+   /* 重置一些默认样式 */
+   * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    video {
+        max-width: 100%;
+    }
+    
+    body {
+      height: 100vh;
+      padding: 10px;
+      background: #fafafa;
+    }
+    
+    /* 使用 CSS Grid 实现响应式布局 */
+    .grid_container {
+      display: grid;
+      /* auto-fit 自动填充，minmax 设置每个格子的最小宽度为150px，最大占满剩余空间 */
+      grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+      /* gap: 10px; */
+      height: 100%;
+    }
+
+    /* 每个格子项 */
+    .grid_item {
+      background: #f0f0f0;
+      border: 1px solid #ddd;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 16px;
+      color: #333;
+      flex-direction: column; /* 改为垂直排列 */
+      /* 确保格子为正方形 */
+      /* aspect-ratio: 1 / 1; */
+    }
+
+    /* Flex 布局的表单行 */
+    .form-row {
+      display: flex;
+      align-items: center;
+      margin-bottom: 5px;
+      margin-top: 5px;
+    }
+    /* 固定宽度、右对齐 label */
+    .form-row label {
+      width: 80px;      
+      text-align: right;
+      margin-right: 10px;
+    }
+
+    [hidden] {
+        display: none !important;
+    }
+
+</style>
+
+<div>
+    <div>
+        <button id="button_start">加入房间</button>
+    </div>
+    <hr />
+    <div style="display: flex; flex-direction: column;">
+        <div class="form-row">
+            <label for="input_url">Ws:</label>
+            <input id="input_url" type="text", style="flex: 1;">
+        </div>
+        <div class="form-row">
+            <label for="input_room">Room:</label>
+            <input id="input_room" type="text" size="32">
+        </div>
+        <div class="form-row">
+            <label for="input_user">User:</label>
+            <input id="input_user" type="text" size="32">
+        </div>
+
+    </div>
+    <hr />
+
+
+    <div class="grid_container">
+        <div class="grid_item">
+            <div>
+                <video id="preview-send" muted controls></video>
+            </div>
+            
+            <div>
+                <label>Local</label>
+                <button id="button-pub-video" hidden>video</button>
+            </div>
+        </div>
+
+        <div class="grid_item" id="receive-grid" hidden>
+            <div>
+                <video id="preview-receive" muted controls></video>
+            </div>
+            
+            <div>
+                <button id="button-sub-video" hidden>audio</button>
+            </div>
+        </div>
+        
+    </div>
+
+</div>
+
+
+
+<script src="dist/bundle.js">
+</script>

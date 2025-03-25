@@ -53,6 +53,7 @@ function ws_connect(url: string, timeout = 5000): Promise<Result<WebSocket, Erro
 
 interface UserGrid {
 	video: HTMLVideoElement;
+	grid: HTMLDivElement,
 }
 
 interface UserCell {
@@ -85,6 +86,10 @@ async function update_user(user: User) {
 	
 	const cell = gState.users.get(user.id);
 	if (!cell) {
+		if (!user.online) {
+			return;
+		}
+
 		console.log("add user", user);
 
 		const grid = ui_add_recv_grid(user.id);
@@ -496,6 +501,7 @@ function ui_add_recv_grid(id: string): UserGrid {
 
 	return {
 		video,
+		grid: gridItem,
 	};
 }
 
