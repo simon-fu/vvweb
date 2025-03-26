@@ -82,12 +82,16 @@ interface ConsumeTrack {
     media?: MediaStreamTrack,
 }
 
-
 interface LocalCamera {
     config?: CameraConfig,
     stream?: MediaStream;
     producerId?: string,
     producer?: Producer<AppData>,
+}
+
+enum MKind {
+    Audio = 1,
+    Video = 2,
 }
 
 export class VVRTC {
@@ -381,7 +385,7 @@ export class VVRTC {
 
     private async tryWatchUserCamera(cell: UserCell) {
         const found = Object.entries(cell.user.streams)
-        .find(([_key, stream]) => stream.kind == 2);
+        .find(([_key, stream]) => stream.kind == MKind.Video);
 
         if(!found) {
             // throw new Error(`Not found video stream for user ${config.userId}`);
@@ -494,7 +498,7 @@ export class VVRTC {
                 const stream = newUser.streams[streamId];
                 // 触发添加事件
                 console.log("add stream, user", newUser.id, stream);
-                if (stream.kind == 2) {
+                if (stream.kind == MKind.Video) {
                     this.trigger(VVRTC.EVENT.USER_CAMERA_ON, {
                         userId: newUser.id,
                     });
@@ -535,7 +539,7 @@ export class VVRTC {
 }
 
 function mediasoup_kind(kind: number): 'audio' | 'video' {
-	return kind == 1 ? "audio" : "video"
+	return kind == MKind.Audio ? "audio" : "video"
 }
 
 function checkVideoSource(media?: MediaStreamTrack, view?: HTMLVideoElement): Boolean {
