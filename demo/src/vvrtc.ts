@@ -19,6 +19,7 @@ export const VVRTCEvent = {
     USER_JOIN: 'user-join',
     USER_LEAVE: 'user-leave',
     USER_CAMERA_ON: 'user-video-on',
+    USER_CAMERA_OFF: 'user-video-off',
 } as const; 
 
 
@@ -30,6 +31,9 @@ export declare interface VVRTCEventTypes {
 		userId: string;
 	}];
     [VVRTCEvent.USER_CAMERA_ON]: [{
+		userId: string;
+	}];
+    [VVRTCEvent.USER_CAMERA_OFF]: [{
 		userId: string;
 	}];
 }
@@ -50,6 +54,13 @@ export declare interface CameraConfig {
 	// };
 }
 
+
+export declare interface MicConfig {
+    constraints?: boolean | MediaTrackConstraints;
+	publish?: boolean;
+}
+
+
 export declare interface UserVideoConfig {
     userId: string;
 	view?: HTMLVideoElement; // TODO: 增加更多类型
@@ -68,10 +79,16 @@ export declare interface UserVideoConfig {
 interface UserCell {
     user: User,
     video?: UserVideo,
+    audio?: UserAudio,
 }
 
 interface UserVideo {
     view?: HTMLVideoElement,
+    track?: ConsumeTrack,
+}
+
+interface UserAudio {
+    view: HTMLAudioElement,
     track?: ConsumeTrack,
 }
 
@@ -89,6 +106,13 @@ interface LocalCamera {
     producer?: Producer<AppData>,
 }
 
+interface LocalMic {
+    config?: MicConfig,
+    stream?: MediaStream;
+    producerId?: string,
+    producer?: Producer<AppData>,
+}
+
 enum MKind {
     Audio = 1,
     Video = 2,
@@ -101,6 +125,7 @@ export class VVRTC {
     private client?: Client;
     private users: Map<string, UserCell>;
     private camera: LocalCamera;
+    private mic: LocalMic;
     private roomConfig?: JoinRoomConfig;
     private producerTransportId?: string;
     private producerTransport?: Transport<AppData>;
@@ -112,6 +137,7 @@ export class VVRTC {
         this.emitter = new EventEmitter();
         this.users = new Map;
         this.camera = {};
+        this.mic = {};
     }
 
     public static EVENT: typeof VVRTCEvent = VVRTCEvent;
@@ -314,7 +340,7 @@ export class VVRTC {
                         ideal : 720
                     },
                     frameRate : {
-                        ideal : 30
+                        ideal : 60
                     }
                 }
             });
@@ -323,19 +349,37 @@ export class VVRTC {
 
         this.camera.config = config;
 
-        if(config) {
-            if(config.view) {
-                config.view.srcObject = this.camera.stream;
-            }
-        }
-
         await this.checkCamera();
 
         // throw new Error(`元素 ID 不存在`);
     }
 
+    public async openMic(config?: MicConfig) {
+        if(!this.mic.stream) {
+            this.mic.stream = await navigator.mediaDevices.getUserMedia({
+                audio: config && config.constraints !== undefined? config.constraints : true
+                // audio: {
+                //     echoCancellation: false // TODO: 正式代码要开启回音消除
+                // },
+            });
+            console.log("opened mic");
+        }
+
+        this.mic.config = config;
+
+        await this.checkMic();
+    }
+
     private async checkCamera() {
         const camera = this.camera;
+
+        if(camera.config) {
+            if(camera.config.view && camera.stream) {
+                if(camera.config.view.srcObject === null) {
+                    camera.config.view.srcObject = camera.stream;
+                }
+            }
+        }
 
         if (!camera.stream || !camera.config) {
             return;
@@ -358,6 +402,35 @@ export class VVRTC {
             const track = camera.stream.getVideoTracks()[0];
 
             camera.producer = await this.producerTransport.produce({ track: track });
+            console.log("produced camera", camera.producer);
+        }
+    }
+
+    private async checkMic() {
+        const mic = this.mic;
+
+        if (!mic.stream || !mic.config) {
+            return;
+        }
+
+        if (!mic.config.publish) {
+            if (!mic.producerId) {
+                return;
+            }
+            // TODO: unpub
+        } else {
+            if (mic.producerId || !mic.stream) {
+                return;
+            }
+
+            if (!this.producerTransport) {
+                return;
+            }
+
+            const track = mic.stream.getAudioTracks()[0];
+
+            mic.producer = await this.producerTransport.produce({ track: track });
+            console.log("produced mic", mic.producer);
         }
     }
 
@@ -409,6 +482,36 @@ export class VVRTC {
         }
     }
     
+    private async tryListenUserAudio(cell: UserCell) {
+        const found = Object.entries(cell.user.streams)
+        .find(([_key, stream]) => stream.kind == MKind.Audio);
+
+        if(!found) {
+            // throw new Error(`Not found audio stream for user ${config.userId}`);
+            return
+        }
+
+        if (!cell.audio?.track) {
+            const [streamId, videoStream] = found;
+            const track = await this.subscribeStream(streamId, videoStream);
+            if (!track) {
+                return ;
+            }
+    
+            if (!cell.audio) {
+                const audioElement = document.createElement('audio') as HTMLAudioElement;
+                document.body.appendChild(audioElement);
+                cell.audio = {
+                    view: audioElement,
+                };
+            }
+    
+            cell.audio.track = track;
+
+            checkAudioSource(cell.audio.track.media, cell.audio.view);
+        }
+    }
+
     private async subscribeStream(streamId: string, stream: Stream) : Promise<ConsumeTrack|undefined> {
         if (!this.client || !this.roomConfig || !this.consumerTransport) {
             return undefined;
@@ -488,8 +591,29 @@ export class VVRTC {
         Object.keys(oldUser.streams).forEach(streamId => {
             if (!newUser.streams.hasOwnProperty(streamId)) {
                 const stream = oldUser.streams[streamId];
-                // 触发移除事件
+                if (stream.kind == MKind.Video) {
+                    if (cell.video) {
+                        if (cell.video.track?.producerId == stream.producer_id) {
+                            console.log("remove video track, producer_id", stream.producer_id);
+                            cell.video.track = undefined;
+                        }
+                        this.trigger(VVRTC.EVENT.USER_CAMERA_OFF, {
+                            userId: newUser.id,
+                        });
+                    }
+                } else if (stream.kind == MKind.Audio) {
+                    if (cell.audio) {
+                        if (cell.audio.track?.producerId == stream.producer_id) {
+                            console.log("remove audio track, producer_id", stream.producer_id);
+                            cell.audio.track = undefined;
+                        }
+                    }
+                }
+
                 console.log("remove stream, user", newUser.id, stream);
+
+                // TODO: 触发移除事件
+
             }
         });
 
@@ -502,6 +626,10 @@ export class VVRTC {
                     this.trigger(VVRTC.EVENT.USER_CAMERA_ON, {
                         userId: newUser.id,
                     });
+                } else if (stream.kind == MKind.Audio) {
+                    this.tryListenUserAudio(cell);
+                } else {
+                    console.warn("unknown stream media kind", stream);
                 }
             }
         });
@@ -509,6 +637,7 @@ export class VVRTC {
 
     private async checkPublish() {
         this.checkCamera();
+        this.checkMic();
     }
 
     private async checkSubscribe() {
@@ -543,7 +672,6 @@ function mediasoup_kind(kind: number): 'audio' | 'video' {
 }
 
 function checkVideoSource(media?: MediaStreamTrack, view?: HTMLVideoElement): Boolean {
-    // console.log("aaa checkVideoSource", media, view);
     
     if (media && view) {
         const combinedStream = new MediaStream();
@@ -554,4 +682,22 @@ function checkVideoSource(media?: MediaStreamTrack, view?: HTMLVideoElement): Bo
     } 
     return false;
 }
+
+function checkAudioSource(media?: MediaStreamTrack, view?: HTMLAudioElement): Boolean {
+    
+    if (media && view) {
+        const combinedStream = new MediaStream();
+        combinedStream.addTrack(media);
+        view.srcObject = combinedStream;
+        console.log("aaa assign audio source", media);
+
+        view.play().catch((error) => {
+            console.error('play audio failed:', error);
+        });
+        
+        return true;
+    } 
+    return false;
+}
+
 

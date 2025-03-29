@@ -60,7 +60,7 @@ class App {
 		});
 
 		vrtc.on(VVRTC.EVENT.USER_CAMERA_ON, ({userId}) => {
-			console.log("user camera on", userId);
+			console.log("switch camera on, user", userId);
 			const grid = this.users.get(userId)
 			
 			if (!grid) {
@@ -73,9 +73,20 @@ class App {
 			});
 		});
 
+		vrtc.on(VVRTC.EVENT.USER_CAMERA_OFF, ({userId}) => {
+			console.log("switch camera off, user", userId);
+		});
+
 		vrtc.openCamera({
 			view: this.sendPreview,
 			publish: true,
+		});
+
+		vrtc.openMic({
+			publish: true,
+			constraints: {
+                echoCancellation: false // TODO: 正式代码要开启回音消除
+            },
 		});
 
 		await vrtc.joinRoom({
