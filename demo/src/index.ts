@@ -42,7 +42,7 @@ class App {
 		this.vrtc = vrtc;
 
 		vrtc.on(VVRTC.EVENT.USER_JOIN, ({userId}) => {
-			console.log("user join", userId);
+			console.log("joined user", userId);
 			const grid = addUserGrid(userId);
 			this.users.set(userId, grid);
 
@@ -50,7 +50,7 @@ class App {
 		});
 
 		vrtc.on(VVRTC.EVENT.USER_LEAVE, ({userId}) => {
-			console.log("user leave", userId);
+			console.log("leaved user", userId);
 			const grid = this.users.get(userId);
 			if (grid) {
 				removeUserGrid(grid);
