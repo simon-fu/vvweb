@@ -20,6 +20,8 @@ export const VVRTCEvent = {
     USER_LEAVE: 'user-leave',
     USER_CAMERA_ON: 'user-video-on',
     USER_CAMERA_OFF: 'user-video-off',
+    USER_MIC_ON: 'user-audio-on',
+    USER_MIC_OFF: 'user-audio-off',
 } as const; 
 
 
@@ -34,6 +36,12 @@ export declare interface VVRTCEventTypes {
 		userId: string;
 	}];
     [VVRTCEvent.USER_CAMERA_OFF]: [{
+		userId: string;
+	}];
+    [VVRTCEvent.USER_MIC_ON]: [{
+		userId: string;
+	}];
+    [VVRTCEvent.USER_MIC_OFF]: [{
 		userId: string;
 	}];
 }
@@ -102,7 +110,7 @@ interface ConsumeTrack {
 interface LocalCamera {
     config?: CameraConfig,
     stream?: MediaStream;
-    producerId?: string,
+    // producerId?: string,
     producer?: Producer<AppData>,
 }
 
@@ -111,6 +119,8 @@ interface LocalMic {
     stream?: MediaStream;
     producerId?: string,
     producer?: Producer<AppData>,
+    muted?: boolean,
+    serverMuted?: boolean,
 }
 
 enum MKind {
@@ -354,19 +364,34 @@ export class VVRTC {
         // throw new Error(`元素 ID 不存在`);
     }
 
-    public async openMic(config?: MicConfig) {
-        if(!this.mic.stream) {
-            this.mic.stream = await navigator.mediaDevices.getUserMedia({
-                audio: config && config.constraints !== undefined? config.constraints : true
-                // audio: {
-                //     echoCancellation: false // TODO: 正式代码要开启回音消除
-                // },
-            });
-            console.log("opened mic");
+    public async closeCamera() {
+        const camera = this.camera;
+
+        if(camera.config) {
+            if(camera.config.view ) {
+                camera.config.view.srcObject = null;
+            }
         }
+
+        if (camera.stream) {
+            camera.stream.getTracks().forEach(track => track.stop());
+        }
+
+        camera.stream = undefined;
+        camera.config = undefined;
+
+        await this.checkCamera();
+    }
+
+    public async setMic(config?: MicConfig) {
 
         this.mic.config = config;
 
+        await this.checkMic();
+    }
+
+    public async muteMic(muted: boolean) {
+        this.mic.muted = muted;
         await this.checkMic();
     }
 
@@ -381,17 +406,29 @@ export class VVRTC {
             }
         }
 
-        if (!camera.stream || !camera.config) {
+        if (!camera.stream) {
+            if (camera.producer && this.roomConfig) {
+                const producerId = camera.producer.id;
+                const rsp = await this.client?.unpublish(this.roomConfig?.roomId, producerId);
+                camera.producer.close();
+                camera.producer = undefined;
+                console.log("unpublished camera producer", producerId, rsp);
+            }
+
+            return;
+        }
+
+        if (!camera.config) {
             return;
         }
 
         if (!camera.config.publish) {
-            if (!camera.producerId) {
+            if (!camera.producer) {
                 return;
             }
             // TODO: unpub
         } else {
-            if (camera.producerId || !camera.stream) {
+            if (camera.producer || !camera.stream) {
                 return;
             }
 
@@ -409,11 +446,55 @@ export class VVRTC {
     private async checkMic() {
         const mic = this.mic;
 
-        if (!mic.stream || !mic.config) {
+        const muted = mic.muted ?? true;             // 默认关闭麦克风
+        const serverMuted = mic.serverMuted ?? true; // 默认关闭麦克风
+
+        if(!mic.stream) {
+            if (!muted) {
+                const config = mic.config;
+                this.mic.stream = await navigator.mediaDevices.getUserMedia({
+                    audio: config && config.constraints !== undefined? config.constraints : true
+                    // audio: {
+                    //     echoCancellation: false // TODO: 正式代码要开启回音消除
+                    // },
+                });
+                console.log("opened mic");
+            }
+        }
+
+        if (!mic.stream) {
             return;
         }
 
-        if (!mic.config.publish) {
+        if (mic.producer && this.roomConfig) {
+            if (muted != serverMuted) {
+                const producerId = mic.producer.id;
+                const rsp = await this.client?.mute(this.roomConfig?.roomId, producerId, muted);
+                if (muted) {
+                    mic.producer.pause();
+                } else {
+                    mic.producer.resume();
+                }
+                
+                mic.serverMuted = muted;
+                console.log("updated mic muted", muted, producerId, rsp);
+            }
+
+            return;
+        }
+
+        if (mic.muted) {
+            if (!this.roomConfig) {
+                mic.stream.getTracks().forEach(track => track.stop());
+                mic.stream = undefined;
+                console.log("closed mic");
+                return;
+            }
+        }
+
+        const pub = mic.config?.publish ?? true;
+
+        if (!pub) {
             if (!mic.producerId) {
                 return;
             }
@@ -430,6 +511,7 @@ export class VVRTC {
             const track = mic.stream.getAudioTracks()[0];
 
             mic.producer = await this.producerTransport.produce({ track: track });
+            mic.serverMuted = false; // TODO: 赋值发布时的 mute
             console.log("produced mic", mic.producer);
         }
     }
@@ -453,7 +535,30 @@ export class VVRTC {
         }
 
         this.tryWatchUserCamera(cell);
-        
+    }
+
+    // TODO: 修改参数跟TRTC一致  
+    public async unwatchUserCamera(userId: string) {
+        let cell = this.users.get(userId);
+        if(!cell) {
+            return ;
+        }
+
+        if (!this.client || !this.roomConfig) {
+            return ;
+        }
+
+        const consumerId = cell.video?.track?.consumerId;
+        if (!consumerId) {
+            return ;
+        }
+
+        const rsp = await this.client.unsubscribe(this.roomConfig.roomId, consumerId);
+        console.log("unsub consumer id", consumerId, "response", rsp);
+        if (cell.video?.view) {
+            cell.video.view.srcObject = null;
+            cell.video.track = undefined;
+        }
     }
 
     private async tryWatchUserCamera(cell: UserCell) {
@@ -590,46 +695,79 @@ export class VVRTC {
 
         Object.keys(oldUser.streams).forEach(streamId => {
             if (!newUser.streams.hasOwnProperty(streamId)) {
+                
                 const stream = oldUser.streams[streamId];
+                console.log("remove stream, user", newUser.id, stream);
+
                 if (stream.kind == MKind.Video) {
                     if (cell.video) {
                         if (cell.video.track?.producerId == stream.producer_id) {
                             console.log("remove video track, producer_id", stream.producer_id);
                             cell.video.track = undefined;
+
+                            if (cell.video.view) {
+                                cell.video.view.srcObject = null;
+                            }
                         }
-                        this.trigger(VVRTC.EVENT.USER_CAMERA_OFF, {
-                            userId: newUser.id,
-                        });
                     }
+
+                    this.trigger(VVRTC.EVENT.USER_CAMERA_OFF, {
+                        userId: newUser.id,
+                    });
                 } else if (stream.kind == MKind.Audio) {
                     if (cell.audio) {
                         if (cell.audio.track?.producerId == stream.producer_id) {
                             console.log("remove audio track, producer_id", stream.producer_id);
                             cell.audio.track = undefined;
+
+                            if (cell.audio.view) {
+                                cell.audio.view.srcObject = null;
+                            }
                         }
                     }
                 }
-
-                console.log("remove stream, user", newUser.id, stream);
-
-                // TODO: 触发移除事件
 
             }
         });
 
         Object.keys(newUser.streams).forEach(streamId => {
+
+            const newStream = newUser.streams[streamId];
+
             if (!oldUser.streams.hasOwnProperty(streamId)) {
-                const stream = newUser.streams[streamId];
+                
                 // 触发添加事件
-                console.log("add stream, user", newUser.id, stream);
-                if (stream.kind == MKind.Video) {
+                console.log("add stream, user", newUser.id, newStream);
+                if (newStream.kind == MKind.Video) {
                     this.trigger(VVRTC.EVENT.USER_CAMERA_ON, {
                         userId: newUser.id,
                     });
-                } else if (stream.kind == MKind.Audio) {
+                } else if (newStream.kind == MKind.Audio) {
+                    if (!newStream.muted) {
+                        this.trigger(VVRTC.EVENT.USER_MIC_ON, {
+                            userId: newUser.id,
+                        });
+                    }
                     this.tryListenUserAudio(cell);
                 } else {
-                    console.warn("unknown stream media kind", stream);
+                    console.warn("unknown stream media kind", newStream);
+                }
+
+            } else {
+
+                const oldStream = oldUser.streams[streamId];
+                if (oldStream.muted != newStream.muted) {
+                    if (newStream.kind == MKind.Audio) {
+                        if (!newStream.muted) {
+                            this.trigger(VVRTC.EVENT.USER_MIC_ON, {
+                                userId: newUser.id,
+                            });
+                        } else {
+                            this.trigger(VVRTC.EVENT.USER_MIC_OFF, {
+                                userId: newUser.id,
+                            });
+                        }
+                    }
                 }
             }
         });

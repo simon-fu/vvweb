@@ -4,18 +4,30 @@ import { VVRTC } from './vvrtc';
 
 interface UserGrid {
 	video: HTMLVideoElement;
-	grid: HTMLDivElement,
+	grid: HTMLDivElement;
+	stateVideo: HTMLInputElement;
+	stateAudio: HTMLInputElement;
+	labelVideo: HTMLLabelElement;
+	labelAudio: HTMLLabelElement;
 }
 
 class App {
 	private startButton: HTMLButtonElement;
 	private sendPreview: HTMLVideoElement;
+	private localCamera: HTMLInputElement;
+	private localMic: HTMLInputElement;
 
-	private vrtc?: VVRTC;
+	private vrtc: VVRTC;
 	private users: Map<string, UserGrid>;
 
 	public constructor() {
 		this.users = new Map;
+		
+		const vrtc = VVRTC.create({
+			url: input_url.value,
+		});
+
+		this.vrtc = vrtc;
 
 		this.sendPreview = document.querySelector('#preview-send') as HTMLVideoElement;
 		initVideo(this.sendPreview);
@@ -24,6 +36,35 @@ class App {
 		this.startButton.addEventListener('click', () => {
 			this.start();
 		});
+
+		this.localCamera = document.getElementById('local-camera') as HTMLInputElement ;
+		this.localCamera.addEventListener('click', () => {
+			console.log("click local camera", this.localCamera.checked);
+
+			if (this.localCamera.checked) {
+				vrtc.openCamera({
+					view: this.sendPreview,
+					publish: true,
+				});
+			} else {
+				vrtc.closeCamera();
+			}
+	
+		});
+
+		this.localMic = document.getElementById('local-mic') as HTMLInputElement ;
+		this.localMic.addEventListener('click', () => {
+			console.log("click local mic", this.localMic.checked);
+
+			vrtc.muteMic(!this.localMic.checked);
+		});
+
+		vrtc.setMic({
+			constraints: {
+                echoCancellation: false // TODO: 正式代码要开启回音消除
+            },
+		})
+
 	}
 
 	public run() {
@@ -31,15 +72,8 @@ class App {
 	}
 
 	private async start() {
-		if(this.vrtc) {
-			return;
-		}
 
-		const vrtc = VVRTC.create({
-			url: input_url.value,
-		});
-
-		this.vrtc = vrtc;
+		const vrtc = this.vrtc;
 
 		vrtc.on(VVRTC.EVENT.USER_JOIN, ({userId}) => {
 			console.log("joined user", userId);
@@ -47,6 +81,20 @@ class App {
 			this.users.set(userId, grid);
 
 			initVideo(grid.video);
+			
+			grid.stateVideo.addEventListener('click', () => {
+				console.log("click remote video, user", userId, "checked", grid.stateVideo.checked);
+	
+				if (grid.stateVideo.checked) {
+					vrtc.watchUserCamera({
+						userId,
+						view: grid.video,
+					});
+				} else {
+					vrtc.unwatchUserCamera(userId);
+				}
+				
+			});
 		});
 
 		vrtc.on(VVRTC.EVENT.USER_LEAVE, ({userId}) => {
@@ -55,8 +103,6 @@ class App {
 			if (grid) {
 				removeUserGrid(grid);
 			}
-
-			// TODO: 取消订阅
 		});
 
 		vrtc.on(VVRTC.EVENT.USER_CAMERA_ON, ({userId}) => {
@@ -67,26 +113,47 @@ class App {
 				return;
 			}
 
-			vrtc.watchUserCamera({
-				userId,
-				view: grid.video,
-			});
+			grid.labelVideo.style.color = 'blue';
+
+			if (grid.stateVideo.checked) {
+				vrtc.watchUserCamera({
+					userId,
+					view: grid.video,
+				});
+			}
 		});
 
 		vrtc.on(VVRTC.EVENT.USER_CAMERA_OFF, ({userId}) => {
 			console.log("switch camera off, user", userId);
+			const grid = this.users.get(userId)
+			
+			if (!grid) {
+				return;
+			}
+
+			grid.labelVideo.style.color = '';
 		});
 
-		vrtc.openCamera({
-			view: this.sendPreview,
-			publish: true,
+		vrtc.on(VVRTC.EVENT.USER_MIC_ON, ({userId}) => {
+			console.log("switch mic on, user", userId);
+			const grid = this.users.get(userId)
+			
+			if (!grid) {
+				return;
+			}
+			
+			grid.labelAudio.style.color = 'blue';
 		});
 
-		vrtc.openMic({
-			publish: true,
-			constraints: {
-                echoCancellation: false // TODO: 正式代码要开启回音消除
-            },
+		vrtc.on(VVRTC.EVENT.USER_MIC_OFF, ({userId}) => {
+			console.log("switch mic off, user", userId);
+			const grid = this.users.get(userId)
+			
+			if (!grid) {
+				return;
+			}
+			
+			grid.labelAudio.style.color = '';
 		});
 
 		await vrtc.joinRoom({
@@ -119,6 +186,49 @@ function addUserGrid(id: string): UserGrid {
 	// video.id = 'preview-receive-' + Date.now();
 	videoContainer.appendChild(video);
 
+	const stateContainer = document.createElement('div');
+
+	const stateVideo = document.createElement('input');
+	const labelVideo = document.createElement('label');
+	{	
+		
+		stateVideo.type = 'checkbox';
+		stateContainer.appendChild(stateVideo);
+		stateVideo.setAttribute('id', id + 'state-video');
+		// stateVideo.hidden = true;
+		// stateVideo.disabled = true;
+		stateVideo.checked = true;
+		stateVideo.style.marginRight = '4px';
+
+		const label = labelVideo;
+		stateContainer.appendChild(label);
+		label.htmlFor = id + 'state-video';
+		label.innerText = 'Video';
+		// label.hidden = true;
+		label.style.marginRight = '8px';
+	}
+
+	const stateAudio = document.createElement('input');
+	const labelAudio = document.createElement('label');
+	{	
+		
+		stateAudio.type = 'checkbox';
+		stateContainer.appendChild(stateAudio);
+		stateAudio.setAttribute('id', id + 'state-audio');
+		// stateAudio.hidden = true;
+		stateAudio.disabled = true;
+		stateAudio.checked = true;
+		stateAudio.style.marginRight = '4px';
+
+		const label = labelAudio;
+		stateContainer.appendChild(label);
+		label.htmlFor = id + 'state-audio';
+		label.innerText = 'Audio';
+		// label.hidden = true;
+		label.style.marginRight = '8px';
+	}
+
+
 	// 创建包含按钮的容器和按钮元素
 	const buttonContainer = document.createElement('div');
 	
@@ -136,6 +246,7 @@ function addUserGrid(id: string): UserGrid {
 	// 将 video 容器和按钮容器添加到 grid_item 中
 	gridItem.appendChild(videoContainer);
 	gridItem.appendChild(buttonContainer);
+	gridItem.appendChild(stateContainer);
 
 	// 将新创建的 grid_item 添加到 grid_container 中
 	const gridContainer = document.querySelector('.grid_container');
@@ -147,6 +258,10 @@ function addUserGrid(id: string): UserGrid {
 	return {
 		video,
 		grid: gridItem,
+		stateAudio,
+		stateVideo,
+		labelAudio,
+		labelVideo,
 	};
 }
 

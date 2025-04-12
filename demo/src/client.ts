@@ -18,6 +18,7 @@ export interface Stream {
 	seq: number;
 	kind: number;  // 1-audio, 2-video
 	producer_id: string; 
+    muted: boolean;
 }
 
 
@@ -272,6 +273,31 @@ export class Client {
 
     }
 
+    public async unpublish(roomId: string, producerId: string): Promise<any> {
+        await this.invoke({
+            typ: {
+                UPub: {
+                    roomId, 
+                    producerId,
+                },
+            }
+        });
+        return {};
+    }
+
+    public async mute(roomId: string, producerId: string, muted: boolean): Promise<any> {
+        await this.invoke({
+            typ: {
+                Mute: {
+                    roomId, 
+                    producerId,
+                    muted,
+                },
+            }
+        });
+        return {};
+    }
+
     public async subscribe(roomId: string, transportId: string, streamId: string, producerId: string): Promise<any> {
         const rsp = await this.invoke({
             typ: {
@@ -286,6 +312,19 @@ export class Client {
         });
 
         return rsp.Sub;
+    }
+
+    public async unsubscribe(roomId: string, consumerId: string): Promise<any> {
+        const rsp = await this.invoke({
+            typ: {
+                USub: {
+                    roomId, 
+                    consumerId,
+                },
+            }
+        });
+
+        return rsp.USub;
     }
 }
 
