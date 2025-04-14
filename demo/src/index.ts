@@ -24,7 +24,7 @@ class App {
 		this.users = new Map;
 		
 		const vrtc = VVRTC.create({
-			url: input_url.value,
+			url: inputUrl.value,
 		});
 
 		this.vrtc = vrtc;
@@ -42,12 +42,12 @@ class App {
 			console.log("click local camera", this.localCamera.checked);
 
 			if (this.localCamera.checked) {
-				vrtc.openCamera({
+				vrtc.openLocalCamera({
 					view: this.sendPreview,
 					publish: true,
 				});
 			} else {
-				vrtc.closeCamera();
+				vrtc.closeLocalCamera();
 			}
 	
 		});
@@ -157,8 +157,8 @@ class App {
 		});
 
 		await vrtc.joinRoom({
-			userId: input_user.value,
-			roomId: input_room.value,
+			userId: inputUserName.value,
+			roomId: inputRoomName.value,
 		});
 	}
 }
@@ -286,25 +286,25 @@ function generateRandomString(
 	}).join('');
 }
 
-const url_params = new URLSearchParams(window.location.search);
+const urlParams = new URLSearchParams(window.location.search);
 
 const URL = "ws://127.0.0.1:11080/ws";
 
-const input_url = document.getElementById('input_url') as HTMLInputElement;
-if (input_url) {
-	input_url.value = url_params.get("ws") ?? URL ;
+const inputUrl = document.getElementById('input_url') as HTMLInputElement;
+if (inputUrl) {
+	inputUrl.value = urlParams.get("ws") ?? URL ;
 }
 
 const ROOM = "room01";
-const input_room = document.getElementById('input_room') as HTMLInputElement;
-if (input_room) {
-	input_room.value = url_params.get("room") ?? ROOM;
+const inputRoomName = document.getElementById('input_room') as HTMLInputElement;
+if (inputRoomName) {
+	inputRoomName.value = urlParams.get("room") ?? ROOM;
 }
 
 // const USER = "user01";
-const input_user = document.getElementById('input_user') as HTMLInputElement;
-if (input_user) {
-	input_user.value = url_params.get("user") ?? generateRandomString(6);
+const inputUserName = document.getElementById('input_user') as HTMLInputElement;
+if (inputUserName) {
+	inputUserName.value = urlParams.get("user") ?? generateRandomString(6);
 }
 
 

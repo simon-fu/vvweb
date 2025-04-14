@@ -46,9 +46,9 @@ export declare interface VVRTCEventTypes {
 	}];
 }
 
-export declare interface CameraConfig {
+export declare interface LocalCameraConfig {
 	view?: HTMLVideoElement;
-	publish?: boolean;
+	publish?: boolean; // 加入房间后是否要发布，默认发布
 	// mute?: boolean | string;
 	// option?: {
 	// 	cameraId?: string;
@@ -65,7 +65,7 @@ export declare interface CameraConfig {
 
 export declare interface MicConfig {
     constraints?: boolean | MediaTrackConstraints;
-	publish?: boolean;
+	publish?: boolean; // 加入房间后是否要发布，默认发布  
 }
 
 
@@ -108,7 +108,7 @@ interface ConsumeTrack {
 }
 
 interface LocalCamera {
-    config?: CameraConfig,
+    config?: LocalCameraConfig,
     stream?: MediaStream;
     // producerId?: string,
     producer?: Producer<AppData>,
@@ -339,7 +339,7 @@ export class VVRTC {
         await this.checkSubscribe();
     }
 
-    public async openCamera(config?: CameraConfig) {
+    public async openLocalCamera(config?: LocalCameraConfig) {
         if(!this.camera.stream) {
             this.camera.stream = await navigator.mediaDevices.getUserMedia({
                 video : {
@@ -364,7 +364,7 @@ export class VVRTC {
         // throw new Error(`元素 ID 不存在`);
     }
 
-    public async closeCamera() {
+    public async closeLocalCamera() {
         const camera = this.camera;
 
         if(camera.config) {
@@ -383,6 +383,7 @@ export class VVRTC {
         await this.checkCamera();
     }
 
+    // 配置麦克风参数，本接口不会真正打开/关闭麦克风  
     public async setMic(config?: MicConfig) {
 
         this.mic.config = config;
@@ -390,6 +391,9 @@ export class VVRTC {
         await this.checkMic();
     }
 
+    // 默认 muted = true，即不打开麦克风
+    // 若加入房间前，设置 muted = true 会打开麦克风，设置 muted = false 会关闭麦克风  
+    // 若加入房间后，第一次设置 muted = false 时打开麦克风，然后设置 muted = true，不会关闭麦克风，只是本地静音且服务器不转发音频数据。
     public async muteMic(muted: boolean) {
         this.mic.muted = muted;
         await this.checkMic();
