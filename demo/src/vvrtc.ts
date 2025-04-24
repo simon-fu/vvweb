@@ -1,9 +1,9 @@
 
 import { Device } from 'mediasoup-client';
 import { Transport } from 'mediasoup-client/lib/Transport';
-import { AppData, Producer } from 'mediasoup-client/lib/types';
+import { AppData, Producer, Consumer } from 'mediasoup-client/lib/types';
 import { Client, User, Notice, Stream} from "./client";
-import { EventEmitter, Listener } from "./emitter";
+// import { EventEmitter, Listener } from "./emitter";
 import { ROUTER_RTP_CAPABILITIES } from './rtp_capabilities';
 
 export interface VVRTCOptions {
@@ -15,6 +15,51 @@ export interface JoinRoomConfig {
 	roomId: string;
 }
 
+export interface Statistics {
+	rtt: number;
+	downLoss: number;
+	upLoss: number;
+	bytesSent: number;
+	bytesReceived: number;
+	localStatistics: LocalStatistic;
+	remoteStatistics: RemoteStatistic[];
+}
+
+export interface VideoStatistic {
+    width: number;
+    height: number;
+    frameRate: number;
+    bitrate: number;
+    // videoType: VideoType;
+}
+
+export interface LocalStatistic {
+	audio?: {
+		bitrate: number;
+		audioLevel: number;
+	};
+	video: VideoStatistic[];
+}
+// export declare enum VideoType {
+// 	Big = 'big',
+// 	Small = 'small',
+// 	Sub = 'sub'
+// }
+export interface RemoteStatistic {
+	audio?: {
+		bitrate: number;
+		audioLevel: number;
+	};
+	video?: {
+		width: number;
+		height: number;
+		frameRate: number;
+		bitrate: number;
+		// videoType: VideoType;
+	}[];
+	userId: string;
+}
+
 export const VVRTCEvent = {
     USER_JOIN: 'user-join',
     USER_LEAVE: 'user-leave',
@@ -22,6 +67,8 @@ export const VVRTCEvent = {
     USER_CAMERA_OFF: 'user-video-off',
     USER_MIC_ON: 'user-audio-on',
     USER_MIC_OFF: 'user-audio-off',
+    STATISTICS: 'statistics',
+    
 } as const; 
 
 
@@ -44,11 +91,65 @@ export declare interface VVRTCEventTypes {
     [VVRTCEvent.USER_MIC_OFF]: [{
 		userId: string;
 	}];
+    [VVRTCEvent.STATISTICS]: [statistics: Statistics];
+    
+}
+
+class VVRTCEmitter {
+    // 内部存储：每个事件名对应一组 handler
+    private _handlers: {
+        [K in keyof VVRTCEventTypes]?: Array<(...args: VVRTCEventTypes[K]) => void>
+    } = {};
+
+    // 注册事件
+    on<T extends keyof VVRTCEventTypes>(
+        event: T,
+        handler: (...args: VVRTCEventTypes[T]) => void,
+        context?: any,
+    ): this {
+        const fn = context ? handler.bind(context) : handler;
+        if (!this._handlers[event]) {
+        this._handlers[event] = [];
+        }
+        this._handlers[event]!.push(fn);
+        return this;
+    }
+
+    // // 注销事件（可选）
+    // off<T extends keyof VVRTCEventTypes>(
+    //     event: T,
+    //     handler?: (...args: VVRTCEventTypes[T]) => void,
+    // ): this {
+    //     if (!handler) {
+    //         // 如果不传 handler，则移除该事件所有监听
+    //         delete this._handlers[event];
+    //     } else {
+    //         const handlers = this._handlers[event];
+    //         if (handlers) {
+    //             this._handlers[event] = handlers.filter(h => h !== handler);
+    //         }
+    //     }
+    //     return this;
+    // }
+
+    // 触发事件
+    emit<T extends keyof VVRTCEventTypes>(
+        event: T,
+        ...args: VVRTCEventTypes[T]
+    ): this {
+        const handlers = this._handlers[event];
+        if (handlers) {
+        // 复制一份，防止回调中修改数组
+        handlers.slice().forEach(h => h(...args));
+        }
+        return this;
+    }
 }
 
 export declare interface LocalCameraConfig {
 	view?: HTMLVideoElement;
 	publish?: boolean; // 加入房间后是否要发布，默认发布
+    small?: boolean; // 是否开启小流，默认不开启
 	// mute?: boolean | string;
 	// option?: {
 	// 	cameraId?: string;
@@ -103,8 +204,9 @@ interface UserAudio {
 interface ConsumeTrack {
     streamId: string,
     producerId: string,
-    consumerId?: string,
-    media?: MediaStreamTrack,
+    // consumerId?: string,
+    consumer: Consumer<AppData>,
+    // media?: MediaStreamTrack,
 }
 
 interface LocalCamera {
@@ -128,9 +230,24 @@ enum MKind {
     Video = 2,
 }
 
+interface LastSent {
+    id: string,
+    frames: number,
+    bytes: number,
+    timestamp: number,
+}
+
+
+interface StatiState {
+    lastSentVideos: LastSent[]; 
+    lastRecvVideos: LastSent[]; 
+    // statiVideos: [VideoStatistic]; 
+}
+
 export class VVRTC {
     private url : string;
-    private emitter: EventEmitter;
+    // private emitter: EventEmitter;
+    private emitter: VVRTCEmitter;
     private device?: Device;
     private client?: Client;
     private users: Map<string, UserCell>;
@@ -141,13 +258,214 @@ export class VVRTC {
     private producerTransport?: Transport<AppData>;
     // private producerRtpParam?: RtpParameters;
     private consumerTransport?: Transport<AppData>;
+    private stats: StatiState;
 
     private constructor(options: VVRTCOptions) {
         this.url = options.url || "ws://127.0.0.1:11080/ws";
-        this.emitter = new EventEmitter();
+        this.emitter = new VVRTCEmitter();
         this.users = new Map;
         this.camera = {};
         this.mic = {};
+        this.stats = {
+            lastSentVideos: [],
+            lastRecvVideos: [],
+        };
+
+        setInterval(async () => {
+            await this.getStats();
+        }, 2000);
+        // clearInterval(intervalId);
+    }
+
+    private async getStats() {
+        // TODO: 先 await Promise.all 获取数据，再处理 
+
+        const local = await this.getOutboundVideos();
+        const remote = await this.getInboundVideos();
+
+        this.trigger(VVRTC.EVENT.STATISTICS, {
+            rtt: 0,
+            downLoss: 0,
+            upLoss: 0,
+            bytesSent: 0,
+            bytesReceived: 0,
+            localStatistics: local,
+            remoteStatistics: remote,
+        });
+    }
+
+    private async getInboundVideos() : Promise<RemoteStatistic[]> {
+        const inboundVideos: any[] = [];
+        const tasks: Promise<void>[] = []; 
+
+        this.users.forEach((cell, userId) => {
+            const task = (async () => {
+                if (cell.video?.track) {
+                    const stats = await cell.video.track.consumer.getStats();
+                    const reports: any[] = [];
+                    stats.forEach((stat) => {
+                        // console.log(stat);
+                        if (stat.type === 'inbound-rtp' && stat.kind === 'video') {
+                            // console.log("consumer inbound video", stat);
+                            reports.push(stat);
+                            // inboundVideos.push(stat);
+                        }
+                    });           
+                    inboundVideos.push({userId, reports});
+                }
+            })();
+            tasks.push(task);
+        });
+        
+        // wait for all of them
+        await Promise.all(tasks)
+
+        
+        // console.log("inboundVideos", inboundVideos.length, inboundVideos );
+
+        // 移除不存在的元素
+        const lasts = this.stats.lastRecvVideos.filter(last => {
+            const found = inboundVideos.some((item: {userId: string, reports: any[]}) => {
+                return item.reports.some((current: any) => {
+                    let equal = current.id === last.id;
+                    // console.log("current", current.id, "last", last.id, "equal", equal);
+                    return equal;
+                });
+            });
+            return found;
+        });
+
+        this.stats.lastRecvVideos = [];
+
+        const remotes: RemoteStatistic[] = [];
+
+        inboundVideos.forEach((item: {userId: string, reports: any[]}) => {
+            const userId = item.userId;
+            const reports = item.reports;
+            
+            const userStat: RemoteStatistic = {
+                userId,
+            }; 
+
+            reports.forEach(stat => {
+                console.log("", userId, stat);
+
+                const current: LastSent = {
+                    id: stat.id,
+                    frames: stat.framesDecoded ?? 0,
+                    bytes: stat.bytesReceived ?? 0,
+                    timestamp: stat.timestamp ?? 0,
+                };
+    
+                this.stats.lastRecvVideos.push(current);
+    
+                let last = lasts.find(ele => ele.id === stat.id);
+    
+                if (!last) {
+                    last = current;
+                }
+    
+                const elapsed = current.timestamp - last.timestamp;
+    
+                // 至少要经过100毫秒
+                if (elapsed < 100) {
+                    return;
+                }
+    
+                if (!userStat.video) {
+                    userStat.video = [];
+                }
+
+                userStat.video.push({
+                    width: stat.frameWidth ?? 0,
+                    height: stat.frameHeight ?? 0,
+                    frameRate: Math.floor((current.frames - last.frames) / (elapsed/1000)),
+                    bitrate: Math.floor(((current.bytes - last.bytes) * 8) / (elapsed/1000)/1000),
+                });
+
+                // console.log("current ", current, "last", last);
+            });
+
+            remotes.push(userStat);
+        });
+
+        // console.log("lastRecvVideos inbound video", this.stats.lastRecvVideos.length, this.stats.lastRecvVideos );
+        // console.log("remotes ", remotes );
+
+        return remotes;
+    }
+
+    private async getOutboundVideos() : Promise<LocalStatistic> {
+
+        const outboundVideos: any[] = [];
+
+        if (this.camera.producer) {
+            const stats = await this.camera.producer.getStats();
+
+            stats.forEach((stat) => {
+                // console.log(stat);
+                if (stat.type === 'outbound-rtp' && stat.kind === 'video') {
+                    // console.log("producer outbound video", stat);
+                    outboundVideos.push(stat);
+                }
+            });
+        }
+
+        // 移除不存在的元素
+        const filtered = this.stats.lastSentVideos.filter(last => {
+            const found = outboundVideos.some(current => {
+                let equal = current.id === last.id;
+                // console.log("current", current.id, "last", last.id, "equal", equal);
+                return equal;
+            });
+            // console.log("found", found);
+            return found;
+        });
+
+
+        const local: LocalStatistic = {
+            video: [],
+        };
+
+        const lasts = filtered;
+        this.stats.lastSentVideos = [];
+
+        outboundVideos.forEach((stat) => {
+            const current: LastSent = {
+                id: stat.id,
+                frames: stat.framesSent ?? 0,
+                bytes: stat.bytesSent ?? 0,
+                timestamp: stat.timestamp ?? 0,
+            };
+
+            this.stats.lastSentVideos.push(current);
+
+            let last = lasts.find(ele => ele.id === stat.id);
+
+            if (!last) {
+                last = current;
+            }
+
+            const elapsed = current.timestamp - last.timestamp;
+
+            // 至少要经过100毫秒
+            if (elapsed < 100) {
+                return;
+            }
+
+            local.video.push({
+                width: stat.frameWidth ?? 0,
+                height: stat.frameHeight ?? 0,
+                frameRate: Math.floor((current.frames - last.frames) / (elapsed/1000)),
+                bitrate: Math.floor(((current.bytes - last.bytes) * 8) / (elapsed/1000)/1000),
+            });
+
+        });
+
+        // console.log("local stati", local);
+        return local;
+
+
     }
 
     public static EVENT: typeof VVRTCEvent = VVRTCEvent;
@@ -436,13 +754,27 @@ export class VVRTC {
                 return;
             }
 
-            if (!this.producerTransport) {
+            if (!this.producerTransport || !this.device) {
                 return;
             }
 
             const track = camera.stream.getVideoTracks()[0];
+            const codec = this.device.rtpCapabilities.codecs?.find((codec) => codec.mimeType.toLowerCase() === 'video/vp8')
+            let encodings;
+            if (camera.config.small) {
+                encodings = [
+                    {scaleResolutionDownBy: 4, maxBitrate: 500000},
+                    // {scaleResolutionDownBy: 2, maxBitrate: 1000000},
+                    {scaleResolutionDownBy: 1, maxBitrate: 5000000}
+                ];
+            }
 
-            camera.producer = await this.producerTransport.produce({ track: track });
+            camera.producer = await this.producerTransport.produce({ 
+                track,
+                codec,
+                encodings,
+            });
+
             console.log("produced camera", camera.producer);
         }
     }
@@ -534,7 +866,7 @@ export class VVRTC {
 
         if (cell.video.track) {
             // 已经订阅过了
-            checkVideoSource(cell.video.track.media, cell.video.view);
+            checkVideoSource(cell.video.track.consumer.track, cell.video.view);
             return;
         }
 
@@ -552,7 +884,7 @@ export class VVRTC {
             return ;
         }
 
-        const consumerId = cell.video?.track?.consumerId;
+        const consumerId = cell.video?.track?.consumer.id;
         if (!consumerId) {
             return ;
         }
@@ -587,7 +919,7 @@ export class VVRTC {
     
             cell.video.track = track;
 
-            checkVideoSource(cell.video.track.media, cell.video.view);
+            checkVideoSource(cell.video.track.consumer.track, cell.video.view);
         }
     }
     
@@ -617,7 +949,7 @@ export class VVRTC {
     
             cell.audio.track = track;
 
-            checkAudioSource(cell.audio.track.media, cell.audio.view);
+            checkAudioSource(cell.audio.track.consumer.track, cell.audio.view);
         }
     }
 
@@ -639,12 +971,13 @@ export class VVRTC {
         });
     
         console.log(`${consumer.kind} consumer created:`, consumer);
-    
+
         return {
             streamId,
             producerId: stream.producer_id,
-            consumerId: rsp.consumerId,
-            media: consumer.track,
+            consumer,
+            // consumerId: rsp.consumerId,
+            // media: consumer.track,
         };
     }
 
@@ -793,20 +1126,27 @@ export class VVRTC {
         return this;
     }
 
+    trigger<T extends keyof VVRTCEventTypes>(
+        event: T,
+        ...args: VVRTCEventTypes[T]
+    ) {
+        this.emitter.emit(event, ...args);
+    }
+
     // // 添加监听器
     // on<T>(event: string, listener: Listener<T>): void {
     //     this.emitter.on(event, listener);
     // }
 
-    // 移除监听器
-    off<T>(event: string, listener: Listener<T>): void {
-        this.emitter.off(event, listener);
-    }
+    // // 移除监听器
+    // off<T>(event: string, listener: Listener<T>): void {
+    //     this.emitter.off(event, listener);
+    // }
 
-    // 触发事件
-    private trigger<T>(event: string, data: T): Boolean {
-        return this.emitter.emit(event, data);
-    }
+    // // 触发事件
+    // private trigger<T>(event: string, data: T): Boolean {
+    //     return this.emitter.emit(event, data);
+    // }
 }
 
 function mediasoup_kind(kind: number): 'audio' | 'video' {

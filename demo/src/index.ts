@@ -9,6 +9,7 @@ interface UserGrid {
 	stateAudio: HTMLInputElement;
 	labelVideo: HTMLLabelElement;
 	labelAudio: HTMLLabelElement;
+	overlay: HTMLDivElement;
 }
 
 class App {
@@ -45,6 +46,7 @@ class App {
 				vrtc.openLocalCamera({
 					view: this.sendPreview,
 					publish: true,
+					small: true,
 				});
 			} else {
 				vrtc.closeLocalCamera();
@@ -156,6 +158,34 @@ class App {
 			grid.labelAudio.style.color = '';
 		});
 
+		vrtc.on(VVRTC.EVENT.STATISTICS, (stats) => {
+			// console.log("event stats", stats);
+			const overlay = document.getElementById('statsOverlay');
+			if (overlay) {
+				let text = '';
+				stats.localStatistics.video.forEach((report) => {
+					text = `${text}${report.width}x${report.height}/${report.frameRate}fps/${report.bitrate}Kbps\n`;
+				});
+				
+				overlay.textContent = text;
+			}
+
+			stats.remoteStatistics.forEach(remote => {
+				const grid = this.users.get(remote.userId)
+				if (grid) {
+					if (remote.video) {
+						let text = '';
+						remote.video.forEach((report) => {
+							text = `${text}${report.width}x${report.height}/${report.frameRate}fps/${report.bitrate}Kbps\n`;
+						});
+						
+						grid.overlay.textContent = text;
+						console.log("remote user stats", remote.userId, "text", text);
+					}
+				}
+			});
+		});
+
 		await vrtc.joinRoom({
 			userId: inputUserName.value,
 			roomId: inputRoomName.value,
@@ -179,12 +209,28 @@ function addUserGrid(id: string): UserGrid {
 
 	// 创建包含 video 的容器和 video 元素
 	const videoContainer = document.createElement('div');
+	videoContainer.style.position = 'relative';
+	videoContainer.style.display = 'inline-block';
+
 	const video = document.createElement('video');
 	video.setAttribute('muted', '');
 	video.setAttribute('controls', '');
 	// 可为新 video 元素设置动态 id
 	// video.id = 'preview-receive-' + Date.now();
 	videoContainer.appendChild(video);
+
+	const overlay = document.createElement('div');
+	// overlay.style = "position:absolute; top:8px; left:8px; color:#fff; background:rgba(0,0,0,0.5); padding:4px 8px; border-radius:4px; font-size:12px; white-space: pre-wrap;";
+	overlay.style.position = 'absolute';
+	overlay.style.top = '8px';
+	overlay.style.left = '8px';
+	overlay.style.color = '#fff';
+	overlay.style.background = 'rgba(0,0,0,0.5)';
+	overlay.style.padding = '4px 8px';
+	overlay.style.borderRadius = '4px';
+	overlay.style.fontSize = '12px';
+	overlay.style.whiteSpace = 'pre-wrap';
+	videoContainer.appendChild(overlay);
 
 	const stateContainer = document.createElement('div');
 
@@ -262,6 +308,7 @@ function addUserGrid(id: string): UserGrid {
 		stateVideo,
 		labelAudio,
 		labelVideo,
+		overlay,
 	};
 }
 
