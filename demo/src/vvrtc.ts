@@ -175,14 +175,14 @@ export declare interface UserVideoConfig {
 	view?: HTMLVideoElement; // TODO: 增加更多类型
 	
 	// streamType: TRTCStreamType;
-	// option?: {
+	option?: {
 	// 	fillMode?: 'contain' | 'cover' | 'fill';
 	// 	mirror?: boolean;
-	// 	small?: boolean;
+		small?: boolean;
 	// 	receiveWhenViewVisible?: boolean;
 	// 	viewRoot?: HTMLElement;
 	// 	canvasRender?: boolean;
-	// };
+	};
 }
 
 interface UserCell {
@@ -192,8 +192,9 @@ interface UserCell {
 }
 
 interface UserVideo {
-    view?: HTMLVideoElement,
+    view?: HTMLVideoElement, // TODO: 去掉，使用 config.view
     track?: ConsumeTrack,
+    config: UserVideoConfig,
 }
 
 interface UserAudio {
@@ -278,7 +279,7 @@ export class VVRTC {
     }
 
     private async getStats() {
-        // TODO: 先 await Promise.all 获取数据，再处理 
+        // TODO: 先 await Promise.all 获取stats数据，再处理 
 
         const local = await this.getOutboundVideos();
         const remote = await this.getInboundVideos();
@@ -304,7 +305,7 @@ export class VVRTC {
                     const stats = await cell.video.track.consumer.getStats();
                     const reports: any[] = [];
                     stats.forEach((stat) => {
-                        // console.log(stat);
+                        // console.log("consumer state", stat);
                         if (stat.type === 'inbound-rtp' && stat.kind === 'video') {
                             // console.log("consumer inbound video", stat);
                             reports.push(stat);
@@ -348,7 +349,7 @@ export class VVRTC {
             }; 
 
             reports.forEach(stat => {
-                console.log("", userId, stat);
+                // console.log("", userId, stat);
 
                 const current: LastSent = {
                     id: stat.id,
@@ -859,7 +860,11 @@ export class VVRTC {
         }
 
         if (!cell.video) {
-            cell.video = {};
+            cell.video = {
+                config,
+            };
+        } else {
+            cell.video.config = config;
         }
 
         cell.video.view = config.view;
@@ -871,6 +876,28 @@ export class VVRTC {
         }
 
         this.tryWatchUserCamera(cell);
+    }
+
+    public async updateUserCamera(config: UserVideoConfig) {
+        let cell = this.users.get(config.userId);
+        if(!cell) {
+            throw new Error(`Not found user ${config.userId}`);
+        }
+
+        if (!cell.video?.track) {
+            return;
+        }
+
+        
+        
+
+        if (!this.client || !this.roomConfig) {
+            return undefined;
+        }
+
+        await this.client.updateConsumeVideoLayer(this.roomConfig.roomId, cell.video.track.consumer.id, config.option?.small);
+
+        return;
     }
 
     // TODO: 修改参数跟TRTC一致  
@@ -906,16 +933,20 @@ export class VVRTC {
             return
         }
 
+        if (!cell.video) {
+            return;
+        }
+
         if (!cell.video?.track) {
             const [streamId, videoStream] = found;
-            const track = await this.subscribeStream(streamId, videoStream);
+            const track = await this.subscribeStream(streamId, videoStream, cell.video.config.option?.small);
             if (!track) {
                 return ;
             }
     
-            if (!cell.video) {
-                cell.video = {};
-            }
+            // if (!cell.video) {
+            //     cell.video = {};
+            // }
     
             cell.video.track = track;
 
@@ -953,13 +984,13 @@ export class VVRTC {
         }
     }
 
-    private async subscribeStream(streamId: string, stream: Stream) : Promise<ConsumeTrack|undefined> {
+    private async subscribeStream(streamId: string, stream: Stream, small?:boolean) : Promise<ConsumeTrack|undefined> {
         if (!this.client || !this.roomConfig || !this.consumerTransport) {
             return undefined;
         }
 
-        console.log("subscribing stream", streamId);
-        const rsp = await this.client.subscribe(this.roomConfig.roomId, this.consumerTransport.id, streamId, stream.producer_id);
+        console.log("subscribing stream", streamId, "small", small);
+        const rsp = await this.client.subscribe(this.roomConfig.roomId, this.consumerTransport.id, streamId, stream.producer_id, small);
         console.log("subscribed", rsp);
     
         const consumer = await this.consumerTransport.consume({

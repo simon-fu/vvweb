@@ -298,7 +298,7 @@ export class Client {
         return {};
     }
 
-    public async subscribe(roomId: string, transportId: string, streamId: string, producerId: string): Promise<any> {
+    public async subscribe(roomId: string, transportId: string, streamId: string, producerId: string, small?:boolean): Promise<any> {
         const rsp = await this.invoke({
             typ: {
                 Sub: {
@@ -306,7 +306,10 @@ export class Client {
                     xid: transportId,
                     streamId,
                     producerId,
-                    preferred_layers: null,
+                    preferredLayers: small ? {
+                        spatialLayer: 0,
+                        temporalLayer: 2,
+                    } : null,
                 },
             }
         });
@@ -325,6 +328,23 @@ export class Client {
         });
 
         return rsp.USub;
+    }
+
+    public async updateConsumeVideoLayer(roomId: string, consumerId: string, small?: boolean) {
+        const rsp = await this.invoke({
+            typ: {
+                Layer: {
+                    roomId, 
+                    consumerId,
+                    preferredLayers: small ? {
+                        spatialLayer: 0,
+                        temporalLayer: 2,
+                    } : null,
+                },
+            }
+        });
+
+        return rsp.Layer;
     }
 }
 

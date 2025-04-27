@@ -9,7 +9,10 @@ interface UserGrid {
 	stateAudio: HTMLInputElement;
 	labelVideo: HTMLLabelElement;
 	labelAudio: HTMLLabelElement;
+	stateSmall: HTMLInputElement;
+	labelSmall: HTMLLabelElement;
 	overlay: HTMLDivElement;
+	layerSelect: HTMLSelectElement; 
 }
 
 class App {
@@ -43,10 +46,12 @@ class App {
 			console.log("click local camera", this.localCamera.checked);
 
 			if (this.localCamera.checked) {
+				const localSmall = document.getElementById('local-small') as HTMLInputElement ;
+
 				vrtc.openLocalCamera({
 					view: this.sendPreview,
 					publish: true,
-					small: true,
+					small: localSmall.checked,
 				});
 			} else {
 				vrtc.closeLocalCamera();
@@ -85,18 +90,37 @@ class App {
 			initVideo(grid.video);
 			
 			grid.stateVideo.addEventListener('click', () => {
-				console.log("click remote video, user", userId, "checked", grid.stateVideo.checked);
+				const small = grid.stateSmall.checked? true : undefined;
+				console.log("click remote video, user", userId, "checked", grid.stateVideo.checked, "small", small);
 	
 				if (grid.stateVideo.checked) {
 					vrtc.watchUserCamera({
 						userId,
 						view: grid.video,
+						option: {
+							small,
+						}
 					});
 				} else {
 					vrtc.unwatchUserCamera(userId);
 				}
 				
 			});
+
+			grid.layerSelect.addEventListener('change', (evt) => {
+				const sel = evt.target as HTMLSelectElement;
+				const [layerS, layerT] = sel.value.split(',').map(Number); // 解析回数组
+				console.log('selected layer', layerS, layerT);
+			});
+
+			grid.stateSmall.addEventListener('click', () => {
+				const small = grid.stateSmall.checked? true : undefined;
+				this.vrtc.updateUserCamera({
+					userId,
+					option:{small}
+				})
+			});
+
 		});
 
 		vrtc.on(VVRTC.EVENT.USER_LEAVE, ({userId}) => {
@@ -116,11 +140,15 @@ class App {
 			}
 
 			grid.labelVideo.style.color = 'blue';
+			const small = grid.stateSmall.checked? true : undefined;
 
 			if (grid.stateVideo.checked) {
 				vrtc.watchUserCamera({
 					userId,
 					view: grid.video,
+					option: {
+						small,
+					}
 				});
 			}
 		});
@@ -180,7 +208,7 @@ class App {
 						});
 						
 						grid.overlay.textContent = text;
-						console.log("remote user stats", remote.userId, "text", text);
+						// console.log("remote user stats", remote.userId, "text", text);
 					}
 				}
 			});
@@ -274,6 +302,44 @@ function addUserGrid(id: string): UserGrid {
 		label.style.marginRight = '8px';
 	}
 
+	const stateSmall = document.createElement('input');
+	const labelSmall = document.createElement('label');
+	{	
+		
+		stateSmall.type = 'checkbox';
+		stateContainer.appendChild(stateSmall);
+		stateSmall.setAttribute('id', id + 'state-small');
+		// stateSmall.hidden = true;
+		// stateSmall.disabled = true;
+		// stateSmall.checked = true;
+		stateSmall.style.marginRight = '4px';
+
+		const label = labelSmall;
+		stateContainer.appendChild(label);
+		label.htmlFor = id + 'state-small';
+		label.innerText = 'Small';
+		// label.hidden = true;
+		label.style.marginRight = '8px';
+	}
+
+	const layerSelect = document.createElement("select");
+	{
+		let value = '';
+		for (let si = 0; si <= 2; si++) {
+			for (let ti = 0; ti <= 2; ti++) {
+			  const text = `S${si}T${ti}`;
+			  value = `${si},${ti}`;
+			  const option = document.createElement('option');
+			  option.value = value;
+			  option.text = text;
+			  layerSelect.appendChild(option);
+			}
+		}
+		layerSelect.value = value;
+
+		stateContainer.appendChild(layerSelect);
+	}
+
 
 	// 创建包含按钮的容器和按钮元素
 	const buttonContainer = document.createElement('div');
@@ -308,7 +374,10 @@ function addUserGrid(id: string): UserGrid {
 		stateVideo,
 		labelAudio,
 		labelVideo,
+		stateSmall,
+		labelSmall,
 		overlay,
+		layerSelect,
 	};
 }
 
