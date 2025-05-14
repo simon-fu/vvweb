@@ -45,18 +45,26 @@ export interface LocalStatistic {
 // 	Small = 'small',
 // 	Sub = 'sub'
 // }
+
+export enum VideoType {
+	Camera = 'camera',
+	Screen = 'screen',
+}
+
+export interface RemoteVideoStatistic {
+    width: number;
+    height: number;
+    frameRate: number;
+    bitrate: number;
+    videoType: VideoType;
+}
+
 export interface RemoteStatistic {
 	audio?: {
 		bitrate: number;
 		audioLevel: number;
 	};
-	video?: {
-		width: number;
-		height: number;
-		frameRate: number;
-		bitrate: number;
-		// videoType: VideoType;
-	}[];
+	video?: RemoteVideoStatistic[];
 	userId: string;
 }
 
@@ -67,6 +75,8 @@ export const VVRTCEvent = {
     USER_CAMERA_OFF: 'user-video-off',
     USER_MIC_ON: 'user-audio-on',
     USER_MIC_OFF: 'user-audio-off',
+    USER_SCREEN_ON: 'user-screen-on',
+    USER_SCREEN_OFF: 'user-screen-off',
     STATISTICS: 'statistics',
     
 } as const; 
@@ -89,6 +99,12 @@ export declare interface VVRTCEventTypes {
 		userId: string;
 	}];
     [VVRTCEvent.USER_MIC_OFF]: [{
+		userId: string;
+	}];
+    [VVRTCEvent.USER_SCREEN_ON]: [{
+		userId: string;
+	}];
+    [VVRTCEvent.USER_SCREEN_OFF]: [{
 		userId: string;
 	}];
     [VVRTCEvent.STATISTICS]: [statistics: Statistics];
@@ -189,6 +205,7 @@ interface UserCell {
     user: User,
     video?: UserVideo,
     audio?: UserAudio,
+    screen?: UserVideo,
 }
 
 interface UserVideo {
@@ -226,9 +243,20 @@ interface LocalMic {
     serverMuted?: boolean,
 }
 
-enum MKind {
-    Audio = 1,
-    Video = 2,
+interface LocalShareScreen {
+    stream?: MediaStream,
+    producer?: Producer<AppData>,
+}
+
+// enum MKind {
+//     Audio = 1,
+//     Video = 2,
+// }
+
+enum StreamType {
+    Camera = 1,
+    Mic = 2,
+    Screen = 3,
 }
 
 interface LastSent {
@@ -245,6 +273,19 @@ interface StatiState {
     // statiVideos: [VideoStatistic]; 
 }
 
+interface ProducerAppData extends AppData{
+    // [key: string]: unknown;
+    // mediaTag: 'camera' | 'screen' | 'mic';
+    // streamId: string;
+    info: ProducerInfo
+}
+
+interface ProducerInfo {
+    // mediaTag: 'camera' | 'screen' | 'mic';
+    stype: StreamType;
+    streamId: string;
+}
+
 export class VVRTC {
     private url : string;
     // private emitter: EventEmitter;
@@ -254,6 +295,7 @@ export class VVRTC {
     private users: Map<string, UserCell>;
     private camera: LocalCamera;
     private mic: LocalMic;
+    private screen: LocalShareScreen;
     private roomConfig?: JoinRoomConfig;
     private producerTransportId?: string;
     private producerTransport?: Transport<AppData>;
@@ -267,6 +309,7 @@ export class VVRTC {
         this.users = new Map;
         this.camera = {};
         this.mic = {};
+        this.screen = {};
         this.stats = {
             lastSentVideos: [],
             lastRecvVideos: [],
@@ -312,7 +355,20 @@ export class VVRTC {
                             // inboundVideos.push(stat);
                         }
                     });           
-                    inboundVideos.push({userId, reports});
+                    inboundVideos.push({userId, reports, stype: StreamType.Camera});
+                }
+                if (cell.screen?.track) {
+                    const stats = await cell.screen.track.consumer.getStats();
+                    const reports: any[] = [];
+                    stats.forEach((stat) => {
+                        // console.log("consumer state", stat);
+                        if (stat.type === 'inbound-rtp' && stat.kind === 'video') {
+                            // console.log("consumer inbound video", stat);
+                            reports.push(stat);
+                            // inboundVideos.push(stat);
+                        }
+                    });           
+                    inboundVideos.push({userId, reports, stype: StreamType.Screen});
                 }
             })();
             tasks.push(task);
@@ -340,9 +396,10 @@ export class VVRTC {
 
         const remotes: RemoteStatistic[] = [];
 
-        inboundVideos.forEach((item: {userId: string, reports: any[]}) => {
+        inboundVideos.forEach((item: {userId: string, reports: any[], stype: StreamType}) => {
             const userId = item.userId;
             const reports = item.reports;
+            const stype = item.stype;
             
             const userStat: RemoteStatistic = {
                 userId,
@@ -372,7 +429,21 @@ export class VVRTC {
                 if (elapsed < 100) {
                     return;
                 }
-    
+
+                let videoType: VideoType;
+
+                switch (stype) {
+                    case StreamType.Camera:
+                        videoType = VideoType.Camera;
+                        break;
+                    case StreamType.Screen:
+                        videoType = VideoType.Screen
+                        break;
+                    default:
+                        return;
+                }
+
+
                 if (!userStat.video) {
                     userStat.video = [];
                 }
@@ -382,6 +453,7 @@ export class VVRTC {
                     height: stat.frameHeight ?? 0,
                     frameRate: Math.floor((current.frames - last.frames) / (elapsed/1000)),
                     bitrate: Math.floor(((current.bytes - last.bytes) * 8) / (elapsed/1000)/1000),
+                    videoType,
                 });
 
                 // console.log("current ", current, "last", last);
@@ -575,22 +647,23 @@ export class VVRTC {
             })
             .on('produce', async ({ kind, rtpParameters, appData }, success, fail) =>
             {
-                console.log("producerTransport on produce", kind, rtpParameters);
-                
+                const info = (appData as ProducerAppData).info;
+                console.log("producerTransport on produce", kind, rtpParameters, "stype", info.stype, "streamId", info.streamId);
+
                 try {
-                    let stream_id;	
-                    if (kind == "audio") {
-                        stream_id = "audio-stream";
-                        // gState.audio_stream_id = stream_id;
-                    } else {
-                        stream_id = "video-stream";
-                        // gState.video_stream_id = stream_id;
-                    }
+                    let stream_id = info.streamId;	
+                    // if (kind == "audio") {
+                    //     stream_id = "audio-stream";
+                    //     // gState.audio_stream_id = stream_id;
+                    // } else {
+                    //     stream_id = "video-stream";
+                    //     // gState.video_stream_id = stream_id;
+                    // }
 
 
                     if (this.client && this.roomConfig && this.producerTransportId) {
-                        const rsp = await this.client.publish(this.roomConfig.roomId, this.producerTransportId, stream_id, kind, rtpParameters);
-                        appData.stream_id = stream_id;
+                        const rsp = await this.client.publish(this.roomConfig.roomId, this.producerTransportId, stream_id, info.stype, rtpParameters);
+                        // appData.stream_id = stream_id;
                         console.log("published stream", stream_id, "transport", this.producerTransportId, rsp);
                         success({ id: rsp.producerId });
                     }
@@ -770,10 +843,20 @@ export class VVRTC {
                 ];
             }
 
+            let appData: ProducerAppData = {
+                info: {
+                    // mediaTag: 'camera',
+                    stype: StreamType.Camera,
+                    streamId: 'video_stream',
+                }
+            };
+
             camera.producer = await this.producerTransport.produce({ 
                 track,
                 codec,
                 encodings,
+                appData,
+                // appData: { mediaTag: 'camera' },
             });
 
             console.log("produced camera", camera.producer);
@@ -847,7 +930,16 @@ export class VVRTC {
 
             const track = mic.stream.getAudioTracks()[0];
 
-            mic.producer = await this.producerTransport.produce({ track: track });
+            let appData: ProducerAppData = {
+                info: {
+                    // mediaTag: 'mic',
+                    stype: StreamType.Mic,
+                    streamId: 'audio_stream',
+                }
+            };
+
+
+            mic.producer = await this.producerTransport.produce({ track, appData });
             mic.serverMuted = false; // TODO: 赋值发布时的 mute
             console.log("produced mic", mic.producer);
         }
@@ -888,8 +980,7 @@ export class VVRTC {
             return;
         }
 
-        
-        
+        // TODO: 保存config，检查是否有改变view
 
         if (!this.client || !this.roomConfig) {
             return undefined;
@@ -924,9 +1015,102 @@ export class VVRTC {
         }
     }
 
+    public async startLocalShareScreen() {
+        if (!this.client || !this.roomConfig) {
+            return undefined;
+        }
+
+        if (!this.producerTransport || !this.device) {
+            return;
+        }
+
+        if (this.screen.producer) {
+            // 已经共享过
+            return;
+        }
+
+        console.log("sharing screen");
+
+        const screenStream = await navigator.mediaDevices.getDisplayMedia({
+            video: true,
+            audio: false    // 如需共享系统/麦克风声音，可设为 true，但兼容性略差
+        });
+
+        let appData: ProducerAppData = {
+            info: {
+                // mediaTag: 'screen',
+                stype: StreamType.Screen,
+                streamId: 'screen_stream',
+            }
+        };
+
+        const track = screenStream.getVideoTracks()[0];
+        
+        // contentHint 的可能值：
+        // motion: 优先流畅度（高帧率）。
+        // detail: 优先清晰度（分辨率）。
+        track.contentHint = 'detail';
+
+        // 限制帧率和码率
+        const encodings = [
+            {maxFramerate: 5, maxBitrate: 1000000 },
+        ];
+
+        const producer = await this.producerTransport.produce({ 
+            track,
+            // codec,
+            encodings,
+            appData,
+        });
+
+        console.log("shared screen");
+
+        track.onended = async () => {
+            if (this.client && this.roomConfig) {
+                const producerId = producer.id;
+                const rsp = await this.client.unpublish(this.roomConfig.roomId, producerId);
+                producer.close();
+                this.screen.producer = undefined;
+                this.screen.stream = undefined;
+                console.log("unpublished screen producer", producerId, rsp);
+            }
+            console.log("share screen ended");
+        };
+
+        this.screen.producer = producer;
+        this.screen.stream = screenStream;
+        
+        return;
+    }
+
+    public async watchUserScreen(config: UserVideoConfig) {
+        let cell = this.users.get(config.userId);
+        if(!cell) {
+            throw new Error(`Not found user ${config.userId}`);
+        }
+
+        if (!cell.screen) {
+            cell.screen = {
+                config,
+            };
+        } else {
+            cell.screen.config = config;
+        }
+
+        cell.screen.view = config.view;
+
+        if (cell.screen.track) {
+            // 已经订阅过了
+            checkVideoSource(cell.screen.track.consumer.track, cell.screen.view);
+            return;
+        }
+
+        this.tryWatchUserScreen(cell);
+    }
+
     private async tryWatchUserCamera(cell: UserCell) {
         const found = Object.entries(cell.user.streams)
-        .find(([_key, stream]) => stream.kind == MKind.Video);
+        .find(([_key, stream]) => stream.stype == StreamType.Camera);
 
         if(!found) {
             // throw new Error(`Not found video stream for user ${config.userId}`);
@@ -953,10 +1137,40 @@ export class VVRTC {
             checkVideoSource(cell.video.track.consumer.track, cell.video.view);
         }
     }
+
+    private async tryWatchUserScreen(cell: UserCell) {
+        const found = Object.entries(cell.user.streams)
+        .find(([_key, stream]) => stream.stype == StreamType.Screen);
+
+        if(!found) {
+            // throw new Error(`Not found video stream for user ${config.userId}`);
+            return
+        }
+
+        if (!cell.screen) {
+            return;
+        }
+
+        if (!cell.screen?.track) {
+            const [streamId, videoStream] = found;
+            const track = await this.subscribeStream(streamId, videoStream, cell.screen.config.option?.small);
+            if (!track) {
+                return ;
+            }
+    
+            // if (!cell.video) {
+            //     cell.video = {};
+            // }
+    
+            cell.screen.track = track;
+
+            checkVideoSource(cell.screen.track.consumer.track, cell.screen.view);
+        }
+    }
     
     private async tryListenUserAudio(cell: UserCell) {
         const found = Object.entries(cell.user.streams)
-        .find(([_key, stream]) => stream.kind == MKind.Audio);
+        .find(([_key, stream]) => stream.stype == StreamType.Mic);
 
         if(!found) {
             // throw new Error(`Not found audio stream for user ${config.userId}`);
@@ -996,7 +1210,7 @@ export class VVRTC {
         const consumer = await this.consumerTransport.consume({
             id: rsp.consumerId, 
             producerId: stream.producer_id, 
-            kind: mediasoup_kind(stream.kind), 
+            kind: mediasoup_kind(stream.stype), 
             rtpParameters: rsp.rtp, 
             streamId,
         });
@@ -1067,14 +1281,15 @@ export class VVRTC {
                 const stream = oldUser.streams[streamId];
                 console.log("remove stream, user", newUser.id, stream);
 
-                if (stream.kind == MKind.Video) {
-                    if (cell.video) {
-                        if (cell.video.track?.producerId == stream.producer_id) {
+                if (stream.stype == StreamType.Camera) {
+                    let video = cell.video;
+                    if (video) {
+                        if (video.track?.producerId == stream.producer_id) {
                             console.log("remove video track, producer_id", stream.producer_id);
-                            cell.video.track = undefined;
+                            video.track = undefined;
 
-                            if (cell.video.view) {
-                                cell.video.view.srcObject = null;
+                            if (video.view) {
+                                video.view.srcObject = null;
                             }
                         }
                     }
@@ -1082,7 +1297,7 @@ export class VVRTC {
                     this.trigger(VVRTC.EVENT.USER_CAMERA_OFF, {
                         userId: newUser.id,
                     });
-                } else if (stream.kind == MKind.Audio) {
+                } else if (stream.stype == StreamType.Mic) {
                     if (cell.audio) {
                         if (cell.audio.track?.producerId == stream.producer_id) {
                             console.log("remove audio track, producer_id", stream.producer_id);
@@ -1093,6 +1308,22 @@ export class VVRTC {
                             }
                         }
                     }
+                } else if (stream.stype == StreamType.Screen) {
+                    let video = cell.screen;
+                    if (video) {
+                        if (video.track?.producerId == stream.producer_id) {
+                            console.log("remove video track, producer_id", stream.producer_id);
+                            video.track = undefined;
+
+                            if (video.view) {
+                                video.view.srcObject = null;
+                            }
+                        }
+                    }
+
+                    this.trigger(VVRTC.EVENT.USER_SCREEN_OFF, {
+                        userId: newUser.id,
+                    });
                 }
 
             }
@@ -1106,17 +1337,21 @@ export class VVRTC {
                 
                 // 触发添加事件
                 console.log("add stream, user", newUser.id, newStream);
-                if (newStream.kind == MKind.Video) {
+                if (newStream.stype == StreamType.Camera) {
                     this.trigger(VVRTC.EVENT.USER_CAMERA_ON, {
                         userId: newUser.id,
                     });
-                } else if (newStream.kind == MKind.Audio) {
+                } else if (newStream.stype == StreamType.Mic) {
                     if (!newStream.muted) {
                         this.trigger(VVRTC.EVENT.USER_MIC_ON, {
                             userId: newUser.id,
                         });
                     }
                     this.tryListenUserAudio(cell);
+                } else if (newStream.stype == StreamType.Screen) {
+                    this.trigger(VVRTC.EVENT.USER_SCREEN_ON, {
+                        userId: newUser.id,
+                    });
                 } else {
                     console.warn("unknown stream media kind", newStream);
                 }
@@ -1125,7 +1360,7 @@ export class VVRTC {
 
                 const oldStream = oldUser.streams[streamId];
                 if (oldStream.muted != newStream.muted) {
-                    if (newStream.kind == MKind.Audio) {
+                    if (newStream.stype == StreamType.Mic) {
                         if (!newStream.muted) {
                             this.trigger(VVRTC.EVENT.USER_MIC_ON, {
                                 userId: newUser.id,
@@ -1149,6 +1384,7 @@ export class VVRTC {
     private async checkSubscribe() {
         this.users.forEach( (cell, _userId) => {
             this.tryWatchUserCamera(cell);
+            this.tryWatchUserScreen(cell);
         });
     }
 
@@ -1180,9 +1416,25 @@ export class VVRTC {
     // }
 }
 
-function mediasoup_kind(kind: number): 'audio' | 'video' {
-	return kind == MKind.Audio ? "audio" : "video"
+// function mediasoup_kind(kind: number): 'audio' | 'video' {
+// 	return kind == MKind.Audio ? "audio" : "video"
+// }
+
+function mediasoup_kind(stype: number): 'audio' | 'video' {
+	// return kind == MKind.Audio ? "audio" : "video"
+    switch (stype) {
+        case StreamType.Mic:
+            return "audio";
+        case StreamType.Camera:
+            return "video";
+        case StreamType.Screen:
+            return "video";
+        default:
+            throw new Error(`Unknown stream type ${stype}`);
+    }
 }
+
+
 
 function checkVideoSource(media?: MediaStreamTrack, view?: HTMLVideoElement): Boolean {
     
@@ -1190,7 +1442,7 @@ function checkVideoSource(media?: MediaStreamTrack, view?: HTMLVideoElement): Bo
         const combinedStream = new MediaStream();
         combinedStream.addTrack(media);
         view.srcObject = combinedStream;
-        console.log("aaa assign video source", media);
+        // console.log("assign video source", media);
         return true;
     } 
     return false;
@@ -1202,7 +1454,7 @@ function checkAudioSource(media?: MediaStreamTrack, view?: HTMLAudioElement): Bo
         const combinedStream = new MediaStream();
         combinedStream.addTrack(media);
         view.srcObject = combinedStream;
-        console.log("aaa assign audio source", media);
+        // console.log("assign audio source", media);
 
         view.play().catch((error) => {
             console.error('play audio failed:', error);

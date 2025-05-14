@@ -1,6 +1,6 @@
 /* eslint-disable no-console */
 
-import { VVRTC } from './vvrtc';
+import { VideoType, VVRTC } from './vvrtc';
 
 interface UserGrid {
 	video: HTMLVideoElement;
@@ -12,7 +12,12 @@ interface UserGrid {
 	stateSmall: HTMLInputElement;
 	labelSmall: HTMLLabelElement;
 	overlay: HTMLDivElement;
-	layerSelect: HTMLSelectElement; 
+	// layerSelect: HTMLSelectElement; 
+}
+
+
+interface User {
+	grids: string[];
 }
 
 class App {
@@ -22,9 +27,11 @@ class App {
 	private localMic: HTMLInputElement;
 
 	private vrtc: VVRTC;
-	private users: Map<string, UserGrid>;
+	private grids: Map<string, UserGrid>;
+	private users: Map<string, User>;
 
 	public constructor() {
+		this.grids = new Map;
 		this.users = new Map;
 		
 		const vrtc = VVRTC.create({
@@ -39,6 +46,11 @@ class App {
 		this.startButton = document.getElementById('button_start') as HTMLButtonElement ;
 		this.startButton.addEventListener('click', () => {
 			this.start();
+		});
+
+		const shareButton = document.getElementById('button_share') as HTMLButtonElement ;
+		shareButton.addEventListener('click', async () => {
+			await this.vrtc.startLocalShareScreen();
 		});
 
 		this.localCamera = document.getElementById('local-camera') as HTMLInputElement ;
@@ -84,8 +96,18 @@ class App {
 
 		vrtc.on(VVRTC.EVENT.USER_JOIN, ({userId}) => {
 			console.log("joined user", userId);
-			const grid = addUserGrid(userId);
-			this.users.set(userId, grid);
+			
+			const user: User = {
+				grids: [],
+			};
+
+			this.users.set(userId, user);
+
+
+			const gridId = userId;
+			const grid = addUserGrid(gridId);
+			this.grids.set(gridId, grid);
+			user.grids.push(gridId);
 
 			initVideo(grid.video);
 			
@@ -107,11 +129,11 @@ class App {
 				
 			});
 
-			grid.layerSelect.addEventListener('change', (evt) => {
-				const sel = evt.target as HTMLSelectElement;
-				const [layerS, layerT] = sel.value.split(',').map(Number); // 解析回数组
-				console.log('selected layer', layerS, layerT);
-			});
+			// grid.layerSelect.addEventListener('change', (evt) => {
+			// 	const sel = evt.target as HTMLSelectElement;
+			// 	const [layerS, layerT] = sel.value.split(',').map(Number); // 解析回数组
+			// 	console.log('selected layer', layerS, layerT);
+			// });
 
 			grid.stateSmall.addEventListener('click', () => {
 				const small = grid.stateSmall.checked? true : undefined;
@@ -125,15 +147,24 @@ class App {
 
 		vrtc.on(VVRTC.EVENT.USER_LEAVE, ({userId}) => {
 			console.log("leaved user", userId);
-			const grid = this.users.get(userId);
-			if (grid) {
-				removeUserGrid(grid);
+			const user = this.users.get(userId);
+			if (!user) {
+				return;
 			}
+
+			user.grids.forEach(gridId => {
+				const grid = this.grids.get(gridId);
+				if (grid) {
+					this.grids.delete(gridId);
+					removeUserGrid(grid);
+				}
+			});
+
 		});
 
 		vrtc.on(VVRTC.EVENT.USER_CAMERA_ON, ({userId}) => {
 			console.log("switch camera on, user", userId);
-			const grid = this.users.get(userId)
+			const grid = this.grids.get(userId)
 			
 			if (!grid) {
 				return;
@@ -155,7 +186,7 @@ class App {
 
 		vrtc.on(VVRTC.EVENT.USER_CAMERA_OFF, ({userId}) => {
 			console.log("switch camera off, user", userId);
-			const grid = this.users.get(userId)
+			const grid = this.grids.get(userId)
 			
 			if (!grid) {
 				return;
@@ -164,9 +195,48 @@ class App {
 			grid.labelVideo.style.color = '';
 		});
 
+		vrtc.on(VVRTC.EVENT.USER_SCREEN_ON, ({userId}) => {
+			console.log("switch screen on, user", userId);
+			
+			const user = this.users.get(userId);
+			if(!user) {
+				return;
+			}
+
+
+			const gridId = userId + '_screen';
+			const grid = addUserGrid(gridId);
+			this.grids.set(gridId, grid);
+			user.grids.push(gridId);
+
+			initVideo(grid.video);
+
+			vrtc.watchUserScreen({
+				userId,
+				view: grid.video,
+			});
+		});
+
+		vrtc.on(VVRTC.EVENT.USER_SCREEN_OFF, ({userId}) => {
+			console.log("switch screen off, user", userId);
+			
+			const user = this.users.get(userId);
+			if(!user) {
+				return;
+			}
+
+			const gridId = userId + '_screen';
+			const grid = this.grids.get(gridId);
+			if (grid) {
+				this.grids.delete(gridId);
+				user.grids = user.grids.filter(item => item !== gridId);
+				removeUserGrid(grid);
+			}
+		});
+
 		vrtc.on(VVRTC.EVENT.USER_MIC_ON, ({userId}) => {
 			console.log("switch mic on, user", userId);
-			const grid = this.users.get(userId)
+			const grid = this.grids.get(userId)
 			
 			if (!grid) {
 				return;
@@ -177,7 +247,7 @@ class App {
 
 		vrtc.on(VVRTC.EVENT.USER_MIC_OFF, ({userId}) => {
 			console.log("switch mic off, user", userId);
-			const grid = this.users.get(userId)
+			const grid = this.grids.get(userId)
 			
 			if (!grid) {
 				return;
@@ -199,18 +269,54 @@ class App {
 			}
 
 			stats.remoteStatistics.forEach(remote => {
-				const grid = this.users.get(remote.userId)
-				if (grid) {
-					if (remote.video) {
-						let text = '';
-						remote.video.forEach((report) => {
-							text = `${text}${report.width}x${report.height}/${report.frameRate}fps/${report.bitrate}Kbps\n`;
-						});
-						
-						grid.overlay.textContent = text;
-						// console.log("remote user stats", remote.userId, "text", text);
+
+				
+
+				const video = remote.video;
+				if (video) {
+					// console.log("remote user video statistics ", video);
+
+					// texts[0] - camera
+					// texts[1] - screen
+					let texts = ['', '']; 
+
+					video.forEach((report) => {
+						let index: number;
+						switch (report.videoType) {
+							case VideoType.Camera: index = 0; break;
+							case VideoType.Screen: index = 1; break;
+						}
+						texts[index] = `${texts[index]}${report.width}x${report.height}/${report.frameRate}fps/${report.bitrate}Kbps\n`;
+					});
+
+					if (texts[0].length > 0) {
+						const grid = this.grids.get(remote.userId)
+						if (grid) {
+							grid.overlay.textContent = texts[0];
+						}
+					}
+
+					if (texts[1].length > 0) {
+						const gridId = remote.userId + '_screen';
+						const grid = this.grids.get(gridId)
+						if (grid) {
+							grid.overlay.textContent = texts[1];
+						}
 					}
 				}
+
+				// const grid = this.grids.get(remote.userId)
+				// if (grid) {
+				// 	if (remote.video) {
+				// 		let text = '';
+				// 		remote.video.forEach((report) => {
+				// 			text = `${text}${report.width}x${report.height}/${report.frameRate}fps/${report.bitrate}Kbps\n`;
+				// 		});
+						
+				// 		grid.overlay.textContent = text;
+				// 		// console.log("remote user stats", remote.userId, "text", text);
+				// 	}
+				// }
 			});
 		});
 
@@ -262,26 +368,6 @@ function addUserGrid(id: string): UserGrid {
 
 	const stateContainer = document.createElement('div');
 
-	const stateVideo = document.createElement('input');
-	const labelVideo = document.createElement('label');
-	{	
-		
-		stateVideo.type = 'checkbox';
-		stateContainer.appendChild(stateVideo);
-		stateVideo.setAttribute('id', id + 'state-video');
-		// stateVideo.hidden = true;
-		// stateVideo.disabled = true;
-		stateVideo.checked = true;
-		stateVideo.style.marginRight = '4px';
-
-		const label = labelVideo;
-		stateContainer.appendChild(label);
-		label.htmlFor = id + 'state-video';
-		label.innerText = 'Video';
-		// label.hidden = true;
-		label.style.marginRight = '8px';
-	}
-
 	const stateAudio = document.createElement('input');
 	const labelAudio = document.createElement('label');
 	{	
@@ -301,6 +387,28 @@ function addUserGrid(id: string): UserGrid {
 		// label.hidden = true;
 		label.style.marginRight = '8px';
 	}
+
+
+	const stateVideo = document.createElement('input');
+	const labelVideo = document.createElement('label');
+	{	
+		
+		stateVideo.type = 'checkbox';
+		stateContainer.appendChild(stateVideo);
+		stateVideo.setAttribute('id', id + 'state-video');
+		// stateVideo.hidden = true;
+		// stateVideo.disabled = true;
+		stateVideo.checked = true;
+		stateVideo.style.marginRight = '4px';
+
+		const label = labelVideo;
+		stateContainer.appendChild(label);
+		label.htmlFor = id + 'state-video';
+		label.innerText = 'Video';
+		// label.hidden = true;
+		label.style.marginRight = '8px';
+	}
+	
 
 	const stateSmall = document.createElement('input');
 	const labelSmall = document.createElement('label');
@@ -322,23 +430,23 @@ function addUserGrid(id: string): UserGrid {
 		label.style.marginRight = '8px';
 	}
 
-	const layerSelect = document.createElement("select");
-	{
-		let value = '';
-		for (let si = 0; si <= 2; si++) {
-			for (let ti = 0; ti <= 2; ti++) {
-			  const text = `S${si}T${ti}`;
-			  value = `${si},${ti}`;
-			  const option = document.createElement('option');
-			  option.value = value;
-			  option.text = text;
-			  layerSelect.appendChild(option);
-			}
-		}
-		layerSelect.value = value;
+	// const layerSelect = document.createElement("select");
+	// {
+	// 	let value = '';
+	// 	for (let si = 0; si <= 2; si++) {
+	// 		for (let ti = 0; ti <= 2; ti++) {
+	// 		  const text = `S${si}T${ti}`;
+	// 		  value = `${si},${ti}`;
+	// 		  const option = document.createElement('option');
+	// 		  option.value = value;
+	// 		  option.text = text;
+	// 		  layerSelect.appendChild(option);
+	// 		}
+	// 	}
+	// 	layerSelect.value = value;
 
-		stateContainer.appendChild(layerSelect);
-	}
+	// 	stateContainer.appendChild(layerSelect);
+	// }
 
 
 	// 创建包含按钮的容器和按钮元素
@@ -377,7 +485,7 @@ function addUserGrid(id: string): UserGrid {
 		stateSmall,
 		labelSmall,
 		overlay,
-		layerSelect,
+		// layerSelect,
 	};
 }
 

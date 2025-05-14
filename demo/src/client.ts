@@ -1,13 +1,13 @@
 import { DtlsParameters } from 'mediasoup-client/lib/Transport';
-import { MediaKind, RtpParameters } from 'mediasoup-client/lib/RtpParameters';
+import { RtpParameters } from 'mediasoup-client/lib/RtpParameters';
 import { EventEmitter, Listener } from "./emitter";
 
 // type Result<T, E> = { type: 'ok', value: T } | { type: 'err', error: E };
 
-const MEDIA_KIND_MAP: Record<MediaKind, number> = {
-    audio: 1,
-    video: 2
-};
+// const MEDIA_KIND_MAP: Record<MediaKind, number> = {
+//     audio: 1,
+//     video: 2
+// };
 
 // const APP_ID = "default-app"; // "BEE70049B999BB338E787A4AD20A804333C949C3";
 // const CALL_ID = "default-call";
@@ -16,7 +16,8 @@ const MEDIA_KIND_MAP: Record<MediaKind, number> = {
 
 export interface Stream {
 	seq: number;
-	kind: number;  // 1-audio, 2-video
+	// kind: number;  // 1-audio, 2-video
+    stype: number;
 	producer_id: string; 
     muted: boolean;
 }
@@ -218,7 +219,7 @@ export class Client {
         return rsp.ConnX;
     }
 
-    public async publish(roomId: string, transportId: string, streamId: string, kind: MediaKind, rtpParametersTyped: RtpParameters): Promise<any> {
+    public async publish(roomId: string, transportId: string, streamId: string, stype: number, rtpParametersTyped: RtpParameters): Promise<any> {
         // const codecs = rtpParametersTyped.codecs;
         // const encodings = rtpParametersTyped.encodings;
         // const rtpParameters: any = rtpParametersTyped;
@@ -262,7 +263,8 @@ export class Client {
                     roomId, 
                     xid: transportId,
                     streamId,
-                    kind: MEDIA_KIND_MAP[kind],
+                    // kind: MEDIA_KIND_MAP[kind],
+                    stype,
                     // rtpParameters,
                     audioType: 0, // RoutableAudio = 0, ExclusiveAudio = 1, PriorityRoomAudio = 2,
                     rtp: rtpParametersTyped,
