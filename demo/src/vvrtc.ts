@@ -945,7 +945,7 @@ export class VVRTC {
         }
     }
 
-    public async watchUserCamera(config: UserVideoConfig) {
+    public async watchRemoteCamera(config: UserVideoConfig) {
         let cell = this.users.get(config.userId);
         if(!cell) {
             throw new Error(`Not found user ${config.userId}`);
@@ -970,7 +970,7 @@ export class VVRTC {
         this.tryWatchUserCamera(cell);
     }
 
-    public async updateUserCamera(config: UserVideoConfig) {
+    public async updateRemoteCamera(config: UserVideoConfig) {
         let cell = this.users.get(config.userId);
         if(!cell) {
             throw new Error(`Not found user ${config.userId}`);
@@ -992,7 +992,7 @@ export class VVRTC {
     }
 
     // TODO: 修改参数跟TRTC一致  
-    public async unwatchUserCamera(userId: string) {
+    public async unwatchRemoteCamera(userId: string) {
         let cell = this.users.get(userId);
         if(!cell) {
             return ;
@@ -1031,10 +1031,23 @@ export class VVRTC {
 
         console.log("sharing screen");
 
-        const screenStream = await navigator.mediaDevices.getDisplayMedia({
-            video: true,
-            audio: false    // 如需共享系统/麦克风声音，可设为 true，但兼容性略差
-        });
+
+        let screenStream;
+        try {
+            screenStream = await navigator.mediaDevices.getDisplayMedia({
+                video: true,
+                audio: false    // 如需共享系统/麦克风声音，可设为 true，但兼容性略差
+            });
+        } catch (err: any) {
+            if (err.name === 'NotAllowedError' || err.name === 'AbortError') {
+                // 用户取消，静默处理
+                console.log('user cancel share screen');
+                return;
+            } else {
+                // 其他异常，继续往外抛
+                throw err;
+            }
+        }
 
         let appData: ProducerAppData = {
             info: {

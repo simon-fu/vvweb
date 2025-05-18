@@ -116,7 +116,7 @@ class App {
 				console.log("click remote video, user", userId, "checked", grid.stateVideo.checked, "small", small);
 	
 				if (grid.stateVideo.checked) {
-					vrtc.watchUserCamera({
+					vrtc.watchRemoteCamera({
 						userId,
 						view: grid.video,
 						option: {
@@ -124,7 +124,7 @@ class App {
 						}
 					});
 				} else {
-					vrtc.unwatchUserCamera(userId);
+					vrtc.unwatchRemoteCamera(userId);
 				}
 				
 			});
@@ -137,7 +137,7 @@ class App {
 
 			grid.stateSmall.addEventListener('click', () => {
 				const small = grid.stateSmall.checked? true : undefined;
-				this.vrtc.updateUserCamera({
+				this.vrtc.updateRemoteCamera({
 					userId,
 					option:{small}
 				})
@@ -174,7 +174,7 @@ class App {
 			const small = grid.stateSmall.checked? true : undefined;
 
 			if (grid.stateVideo.checked) {
-				vrtc.watchUserCamera({
+				vrtc.watchRemoteCamera({
 					userId,
 					view: grid.video,
 					option: {
