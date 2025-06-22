@@ -262,23 +262,24 @@ class App {
 			if (overlay) {
 				let text = '';
 				stats.localStatistics.video.forEach((report) => {
-					text = `${text}${report.width}x${report.height}/${report.frameRate}fps/${report.bitrate}Kbps\n`;
+					text = `${text}V: ${report.width}x${report.height}/${report.frameRate} fps/${report.bitrate} Kbps\n`;
 				});
+
+				if (stats.localStatistics.audio) {
+					text = `${text}A: ${stats.localStatistics.audio.bitrate} Kbps\n`;
+				}
 				
 				overlay.textContent = text;
 			}
 
 			stats.remoteStatistics.forEach(remote => {
-
-				
+				// texts[0] - main
+				// texts[1] - screen
+				let texts = ['', '']; 
 
 				const video = remote.video;
 				if (video) {
 					// console.log("remote user video statistics ", video);
-
-					// texts[0] - camera
-					// texts[1] - screen
-					let texts = ['', '']; 
 
 					video.forEach((report) => {
 						let index: number;
@@ -286,22 +287,30 @@ class App {
 							case VideoType.Camera: index = 0; break;
 							case VideoType.Screen: index = 1; break;
 						}
-						texts[index] = `${texts[index]}${report.width}x${report.height}/${report.frameRate}fps/${report.bitrate}Kbps\n`;
+						texts[index] = `${texts[index]}V: ${report.width}x${report.height}/${report.frameRate} fps/${report.bitrate} Kbps\n`;
 					});
+				}
 
-					if (texts[0].length > 0) {
-						const grid = this.grids.get(remote.userId)
-						if (grid) {
-							grid.overlay.textContent = texts[0];
-						}
+				const audio = remote.audio;
+				if (audio) {
+					const grid = this.grids.get(remote.userId)
+					if (grid) {
+						texts[0] = `${texts[0]}A: ${audio.bitrate} Kbps\n`
 					}
+				}
 
-					if (texts[1].length > 0) {
-						const gridId = remote.userId + '_screen';
-						const grid = this.grids.get(gridId)
-						if (grid) {
-							grid.overlay.textContent = texts[1];
-						}
+				if (texts[0].length > 0) {
+					const grid = this.grids.get(remote.userId)
+					if (grid) {
+						grid.overlay.textContent = texts[0];
+					}
+				}
+
+				if (texts[1].length > 0) {
+					const gridId = remote.userId + '_screen';
+					const grid = this.grids.get(gridId)
+					if (grid) {
+						grid.overlay.textContent = texts[1];
 					}
 				}
 

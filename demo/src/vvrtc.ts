@@ -22,7 +22,8 @@ export interface Statistics {
 	bytesSent: number;
 	bytesReceived: number;
 	localStatistics: LocalStatistic;
-	remoteStatistics: RemoteStatistic[];
+	// remoteStatistics: RemoteStatistic[];
+    remoteStatistics: Map<string, RemoteStatistic>;
 }
 
 export interface VideoStatistic {
@@ -33,11 +34,13 @@ export interface VideoStatistic {
     // videoType: VideoType;
 }
 
+export interface AudioStatistic {
+    bitrate: number;
+    // audioLevel: number;
+}
+
 export interface LocalStatistic {
-	audio?: {
-		bitrate: number;
-		audioLevel: number;
-	};
+	audio?: AudioStatistic;
 	video: VideoStatistic[];
 }
 // export declare enum VideoType {
@@ -60,10 +63,7 @@ export interface RemoteVideoStatistic {
 }
 
 export interface RemoteStatistic {
-	audio?: {
-		bitrate: number;
-		audioLevel: number;
-	};
+	audio?: AudioStatistic;
 	video?: RemoteVideoStatistic[];
 	userId: string;
 }
@@ -269,7 +269,9 @@ interface LastSent {
 
 interface StatiState {
     lastSentVideos: LastSent[]; 
+    lastSentAudio: LastSent[]; 
     lastRecvVideos: LastSent[]; 
+    lastRecvAudios: LastSent[]; 
     // statiVideos: [VideoStatistic]; 
 }
 
@@ -313,6 +315,8 @@ export class VVRTC {
         this.stats = {
             lastSentVideos: [],
             lastRecvVideos: [],
+            lastSentAudio: [],
+            lastRecvAudios: [],
         };
 
         setInterval(async () => {
@@ -324,8 +328,17 @@ export class VVRTC {
     private async getStats() {
         // TODO: 先 await Promise.all 获取stats数据，再处理 
 
-        const local = await this.getOutboundVideos();
-        const remote = await this.getInboundVideos();
+        // const local = await this.getOutboundVideos();
+        const local: LocalStatistic = {
+            video: await this.getOutboundVideos(),
+            audio: await this.getOutboundAudio(),
+        };
+        
+        const remote = new Map<string, RemoteStatistic>();
+        {
+            await this.getInboundVideos(remote);
+            await this.getInboundAudios(remote);
+        }
 
         this.trigger(VVRTC.EVENT.STATISTICS, {
             rtt: 0,
@@ -338,7 +351,7 @@ export class VVRTC {
         });
     }
 
-    private async getInboundVideos() : Promise<RemoteStatistic[]> {
+    private async getInboundVideos(userMap: Map<string, RemoteStatistic>) : Promise<void> {
         const inboundVideos: any[] = [];
         const tasks: Promise<void>[] = []; 
 
@@ -401,9 +414,17 @@ export class VVRTC {
             const reports = item.reports;
             const stype = item.stype;
             
-            const userStat: RemoteStatistic = {
-                userId,
-            }; 
+            // const userStat: RemoteStatistic = {
+            //     userId,
+            // }; 
+
+            let userStat = userMap.get(userId);
+            if (!userStat) {
+                userStat = { 
+                    userId,
+                };
+                userMap.set(userId, userStat);
+            }
 
             reports.forEach(stat => {
                 // console.log("", userId, stat);
@@ -427,6 +448,10 @@ export class VVRTC {
     
                 // 至少要经过100毫秒
                 if (elapsed < 100) {
+                    return;
+                }
+
+                if (!userStat) {
                     return;
                 }
 
@@ -465,10 +490,116 @@ export class VVRTC {
         // console.log("lastRecvVideos inbound video", this.stats.lastRecvVideos.length, this.stats.lastRecvVideos );
         // console.log("remotes ", remotes );
 
-        return remotes;
+        // return remotes;
+        return ;
     }
 
-    private async getOutboundVideos() : Promise<LocalStatistic> {
+    private async getInboundAudios(userMap: Map<string, RemoteStatistic>) : Promise<void> {
+        const inboundVideos: any[] = [];
+        const tasks: Promise<void>[] = []; 
+
+        this.users.forEach((cell, userId) => {
+            const task = (async () => {
+                if (cell.audio?.track) {
+                    const stats = await cell.audio.track.consumer.getStats();
+                    const reports: any[] = [];
+                    stats.forEach((stat) => {
+                        // console.log("consumer state", stat);
+                        if (stat.type === 'inbound-rtp' && stat.kind === 'audio') {
+                            // console.log("consumer inbound video", stat);
+                            reports.push(stat);
+                            // inboundVideos.push(stat);
+                        }
+                    });           
+                    inboundVideos.push({userId, reports, stype: StreamType.Mic});
+                }
+            })();
+            tasks.push(task);
+        });
+        
+        // wait for all of them
+        await Promise.all(tasks)
+
+        
+        // console.log("inboundVideos", inboundVideos.length, inboundVideos );
+
+        // 移除不存在的元素
+        const lasts = this.stats.lastRecvAudios.filter(last => {
+            const found = inboundVideos.some((item: {userId: string, reports: any[]}) => {
+                return item.reports.some((current: any) => {
+                    let equal = current.id === last.id;
+                    // console.log("current", current.id, "last", last.id, "equal", equal);
+                    return equal;
+                });
+            });
+            return found;
+        });
+
+        this.stats.lastRecvAudios = [];
+
+        const remotes: RemoteStatistic[] = [];
+
+        inboundVideos.forEach((item: {userId: string, reports: any[], stype: StreamType}) => {
+            const userId = item.userId;
+            const reports = item.reports;
+            
+            // const userStat: RemoteStatistic = {
+            //     userId,
+            // }; 
+
+            let userStat = userMap.get(userId);
+            if (!userStat) {
+                userStat = { 
+                    userId,
+                };
+                userMap.set(userId, userStat);
+            }
+
+            reports.forEach(stat => {
+                // console.log("", userId, stat);
+
+                const current: LastSent = {
+                    id: stat.id,
+                    frames: stat.framesDecoded ?? 0,
+                    bytes: stat.bytesReceived ?? 0,
+                    timestamp: stat.timestamp ?? 0,
+                };
+    
+                this.stats.lastRecvAudios.push(current);
+    
+                let last = lasts.find(ele => ele.id === stat.id);
+    
+                if (!last) {
+                    last = current;
+                }
+    
+                const elapsed = current.timestamp - last.timestamp;
+    
+                // 至少要经过100毫秒
+                if (elapsed < 100) {
+                    return;
+                }
+
+                if (!userStat) {
+                    return;
+                }
+
+                userStat.audio = {
+                    bitrate: Math.floor(((current.bytes - last.bytes) * 8) / (elapsed/1000)/1000),
+                };
+
+                // console.log("current ", current, "last", last);
+            });
+
+            remotes.push(userStat);
+        });
+
+        // console.log("remotes ", remotes );
+
+        return;
+    }
+
+    private async getOutboundVideos() : Promise<VideoStatistic[]> {
 
         const outboundVideos: any[] = [];
 
@@ -484,7 +615,7 @@ export class VVRTC {
             });
         }
 
-        // 移除不存在的元素
+        // 移除存在上一次但当前不存在的元素
         const filtered = this.stats.lastSentVideos.filter(last => {
             const found = outboundVideos.some(current => {
                 let equal = current.id === last.id;
@@ -496,9 +627,11 @@ export class VVRTC {
         });
 
 
-        const local: LocalStatistic = {
-            video: [],
-        };
+        // const local: LocalStatistic = {
+        //     video: [],
+        // };
+
+        const videos: VideoStatistic[] = [];
 
         const lasts = filtered;
         this.stats.lastSentVideos = [];
@@ -526,7 +659,7 @@ export class VVRTC {
                 return;
             }
 
-            local.video.push({
+            videos.push({
                 width: stat.frameWidth ?? 0,
                 height: stat.frameHeight ?? 0,
                 frameRate: Math.floor((current.frames - last.frames) / (elapsed/1000)),
@@ -535,9 +668,82 @@ export class VVRTC {
 
         });
 
-        // console.log("local stati", local);
-        return local;
+        // console.log("videos stati", videos);
+        return videos;
 
+
+    }
+
+    private async getOutboundAudio() : Promise<AudioStatistic|undefined> {
+
+        const outbounds: any[] = [];
+
+
+        if (this.mic.producer) {
+            const stats = await this.mic.producer.getStats();
+
+            stats.forEach((stat) => {
+                // console.log(stat);
+                if (stat.type === 'outbound-rtp' && stat.kind === 'audio') {
+                    // console.log("producer outbound audio", stat);
+                    outbounds.push(stat);
+                }
+            });
+        }
+
+        // 移除存在上一次但当前不存在的元素
+        const filtered = this.stats.lastSentAudio.filter(last => {
+            const found = outbounds.some(current => {
+                let equal = current.id === last.id;
+                // console.log("current", current.id, "last", last.id, "equal", equal);
+                return equal;
+            });
+            // console.log("found", found);
+            return found;
+        });
+
+
+        const statss: AudioStatistic[] = [];
+
+        const lasts = filtered;
+        this.stats.lastSentAudio = [];
+
+        outbounds.forEach((stat) => {
+            const current: LastSent = {
+                id: stat.id,
+                frames: stat.framesSent ?? 0,
+                bytes: stat.bytesSent ?? 0,
+                timestamp: stat.timestamp ?? 0,
+            };
+
+            this.stats.lastSentAudio.push(current);
+
+            let last = lasts.find(ele => ele.id === stat.id);
+
+            if (!last) {
+                last = current;
+            }
+
+            const elapsed = current.timestamp - last.timestamp;
+
+            // 至少要经过100毫秒
+            if (elapsed < 100) {
+                return;
+            }
+
+            statss.push({
+                bitrate: Math.floor(((current.bytes - last.bytes) * 8) / (elapsed/1000)/1000),
+                // audioLevel: 0,
+            });
+
+        });
+
+        // console.log("audio stati", statss);
+        if (statss.length > 0) {
+            return statss[0];
+        } else {
+            return undefined;
+        }
 
     }
 
