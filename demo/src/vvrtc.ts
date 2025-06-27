@@ -13,6 +13,7 @@ export interface VVRTCOptions {
 export interface JoinRoomConfig {
 	userId: string;
 	roomId: string;
+    userExt?: string;
 }
 
 export interface Statistics {
@@ -85,6 +86,7 @@ export const VVRTCEvent = {
 export declare interface VVRTCEventTypes {
 	[VVRTCEvent.USER_JOIN]: [{
 		userId: string;
+        userExt?: string;
 	}];
 	[VVRTCEvent.USER_LEAVE]: [{
 		userId: string;
@@ -787,7 +789,7 @@ export class VVRTC {
         const client = new Client(ws, args.userId);
 
         {
-            const rsp = await client.open_session(args.roomId);
+            const rsp = await client.open_session(args.roomId, args.userExt);
             console.log("opened session:", rsp);    
         }
         
@@ -1413,6 +1415,35 @@ export class VVRTC {
     
             cell.audio.track = track;
 
+            // const { rtpReceiver } = cell.audio.track.consumer;
+            // if (rtpReceiver) {
+            //     setInterval(() => {
+            //         // 方法 A：更简单，拿到同步源列表
+            //         const csources = rtpReceiver.getContributingSources();
+            //         csources.forEach(src => {
+            //             // audioLevel: 0.0 ~ 1.0
+            //             console.log(`CSSRC ${src.source} 的音量：`, src.audioLevel);
+            //         });
+
+            //         const sources = rtpReceiver.getSynchronizationSources();
+            //         sources.forEach(src => {
+            //             // audioLevel: 0.0 ~ 1.0
+            //             console.log(`SSRC ${src.source} 的音量：`, src.audioLevel);
+            //         });
+
+            //         // // 方法 B：用 stats（可以同时拿到更多网络指标）
+            //         // rtpReceiver.getStats().then(stats => {
+            //         //     stats.forEach(report => {
+            //         //         if (report.type === 'inbound-rtp' &&
+            //         //             report.mediaType === 'audio' &&
+            //         //             report.audioLevel !== undefined) {
+            //         //             console.log('音频电平（inbound-rtp）：', report.audioLevel);
+            //         //         }
+            //         //     });
+            //         // });
+            //     }, 200);
+            // }
+
             checkAudioSource(cell.audio.track.consumer.track, cell.audio.view);
         }
     }
@@ -1461,6 +1492,7 @@ export class VVRTC {
                     id: newUser.id,
                     online: true,
                     streams: {},
+                    ext: newUser.ext,
                 },
             };
             
@@ -1468,6 +1500,7 @@ export class VVRTC {
 
             this.trigger(VVRTC.EVENT.USER_JOIN, {
                 userId: newUser.id,
+                userExt: newUser.ext,
             });
 
         } 

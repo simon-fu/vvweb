@@ -27,6 +27,7 @@ export interface User {
 	id: string;
 	online: boolean;
 	streams: { [key: string]: Stream };
+    ext?: string;
     // streams: Map<string, Stream>;
 }
 
@@ -161,7 +162,7 @@ export class Client {
         return this.emitter.emit(event, data);
     }
 
-    public async open_session(room_id: string): Promise<any> {
+    public async open_session(room_id: string, user_ext?: string): Promise<any> {
         // console.log("open session ...");
         const rsp = await this.invoke({
             // msg_id: next_msg_id(),
@@ -169,6 +170,7 @@ export class Client {
                 Open: {
                     user_id: this.userId,
                     room_id,
+                    user_ext,
                 },
             }
         });

@@ -18,6 +18,8 @@ module.exports = {
 	output : {
 		filename : 'dist/bundle.js',
 		path     : path.resolve(__dirname, 'dist')
+  		// filename: 'bundle.js',
+  		// path: path.resolve(__dirname, 'dist')
 	},
 	devServer : {
 		liveReload : false,

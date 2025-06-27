@@ -94,8 +94,8 @@ class App {
 
 		const vrtc = this.vrtc;
 
-		vrtc.on(VVRTC.EVENT.USER_JOIN, ({userId}) => {
-			console.log("joined user", userId);
+		vrtc.on(VVRTC.EVENT.USER_JOIN, ({userId, userExt}) => {
+			console.log("joined user", userId, ", ext", userExt);
 			
 			const user: User = {
 				grids: [],
@@ -246,7 +246,7 @@ class App {
 		});
 
 		vrtc.on(VVRTC.EVENT.USER_MIC_OFF, ({userId}) => {
-			console.log("switch mic off, user", userId);
+			console.log("on switch mic off, user", userId);
 			const grid = this.grids.get(userId)
 			
 			if (!grid) {
@@ -332,6 +332,7 @@ class App {
 		await vrtc.joinRoom({
 			userId: inputUserName.value,
 			roomId: inputRoomName.value,
+			userExt: "this_is_user_ext",
 		});
 	}
 }
