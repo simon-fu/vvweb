@@ -1518,6 +1518,10 @@ export class VVRTC {
 
             // TODO: 取消订阅等
 
+            if (cell.audio) {
+                document.body.removeChild(cell.audio.view);
+            }
+
             this.trigger(VVRTC.EVENT.USER_LEAVE, {
                 userId: newUser.id,
             });
