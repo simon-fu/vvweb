@@ -64,6 +64,7 @@ class App {
 		});
 
 		this.localCamera = document.getElementById('local-camera') as HTMLInputElement ;
+		this.localCamera.checked = true;
 		this.localCamera.addEventListener('click', () => {
 			console.log("click local camera", this.localCamera.checked);
 
@@ -82,6 +83,7 @@ class App {
 		});
 
 		this.localMic = document.getElementById('local-mic') as HTMLInputElement ;
+		this.localMic.checked = true;
 		this.localMic.addEventListener('click', () => {
 			console.log("click local mic", this.localMic.checked);
 
