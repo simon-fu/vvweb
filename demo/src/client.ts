@@ -38,6 +38,12 @@ export interface Notice {
     body: any,
 }
 
+export interface Status {
+    code: number,
+    reason: string,
+}
+
+
 export class Client {
     private ws: WebSocket;
 
@@ -104,6 +110,11 @@ export class Client {
                 if (handled) {
                     return;
                 }
+            } else if (msg.msg_type.ClosedNotice) {
+                const handled = this.trigger("closed", msg.msg_type.ClosedNotice);
+                if (handled) {
+                    return;
+                }
             }
 
             console.warn("Unhandle msg", msg);
@@ -120,7 +131,7 @@ export class Client {
     }
 
     private handleClose(event: CloseEvent) {
-        console.error("WebSocket closed", event);
+        console.log("WebSocket closed", event);
 
         for (const [, { reject }] of this.pendingRequests) {
             reject(new Error("WebSocket closed"));
@@ -177,6 +188,21 @@ export class Client {
         // console.log("opened response:", rsp.OpenSessionResponse);
         // this.sessionId = rsp.OpenSessionResponse.session_id;
         return rsp.Open;
+    }
+
+    public async close_session(room_id: string): Promise<any> {
+        // console.log("close session ...");
+        const rsp = await this.invoke({
+            typ: {
+                Close: {
+                    room_id,
+                },
+            }
+        });
+
+        this.ws.close();
+
+        return rsp.Close;
     }
 
     public async create_producer_transport(roomId: string): Promise<any> {

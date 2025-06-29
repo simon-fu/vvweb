@@ -2,7 +2,7 @@
 import { Device } from 'mediasoup-client';
 import { Transport } from 'mediasoup-client/lib/Transport';
 import { AppData, Producer, Consumer } from 'mediasoup-client/lib/types';
-import { Client, User, Notice, Stream} from "./client";
+import { Client, User, Notice, Stream, Status} from "./client";
 // import { EventEmitter, Listener } from "./emitter";
 import { ROUTER_RTP_CAPABILITIES } from './rtp_capabilities';
 
@@ -751,14 +751,12 @@ export class VVRTC {
 
     public static EVENT: typeof VVRTCEvent = VVRTCEvent;
 
-    public static create(options?: VVRTCOptions): VVRTC
-    {
+    public static create(options?: VVRTCOptions): VVRTC {
         const vvrtc = new VVRTC(options || {});
         return vvrtc;
     }
 
-    public async joinRoom(args: JoinRoomConfig): Promise<void>
-    {
+    public async joinRoom(args: JoinRoomConfig): Promise<void> {
         if (!this.device) {
             const device = new Device();
             await device.load({
@@ -790,7 +788,7 @@ export class VVRTC {
 
         {
             const rsp = await client.open_session(args.roomId, args.userExt);
-            console.log("opened session:", rsp);    
+            console.log("opened session response  ", rsp);    
         }
         
         this.client = client;
@@ -806,11 +804,63 @@ export class VVRTC {
             }
         });
 
+        client.on("closed", async (status: Status) => {
+            console.log("recv closed", status);
+            await this.cleanUp();
+        });
+
         await Promise.allSettled([
             this.createProducerTransport(),
             this.createConsumerTransport(),
         ]);
 
+    }
+
+    public async leaveRoom(): Promise<void> {
+        if(!this.client || !this.roomConfig) {
+            return;
+        }
+
+        const rsp = await this.client.close_session(this.roomConfig.roomId);
+        console.log("closed session response", rsp);   
+
+        await this.cleanUp();
+    }
+
+    private async cleanUp() {
+        this.users.forEach(async cell => {
+            if(cell.audio) {
+                this.cleanUser(cell);
+            }
+        });
+        this.users.clear();
+
+        this.camera.config = undefined;
+        this.camera.stream = undefined;
+        this.camera.producer = undefined;
+
+        this.mic.config = undefined;
+        this.mic.muted = undefined;
+        this.mic.producer = undefined;
+        this.mic.producerId = undefined;
+        this.mic.serverMuted = undefined;
+        this.mic.stream = undefined;
+
+        this.screen.producer = undefined;
+        this.screen.stream = undefined;
+
+        this.roomConfig = undefined;
+        this.producerTransportId = undefined;
+        this.producerTransport = undefined;
+        this.consumerTransport = undefined;
+
+        this.client = undefined;
+    }
+
+    private cleanUser(cell: UserCell) {
+        if (cell.audio) {
+            document.body.removeChild(cell.audio.view);
+        }
     }
 
     private async createProducerTransport() {
@@ -1516,11 +1566,7 @@ export class VVRTC {
 
             this.users.delete(newUser.id);
 
-            // TODO: 取消订阅等
-
-            if (cell.audio) {
-                document.body.removeChild(cell.audio.view);
-            }
+            this.cleanUser(cell);
 
             this.trigger(VVRTC.EVENT.USER_LEAVE, {
                 userId: newUser.id,

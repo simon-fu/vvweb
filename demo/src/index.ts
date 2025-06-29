@@ -29,10 +29,12 @@ class App {
 	private vrtc: VVRTC;
 	private grids: Map<string, UserGrid>;
 	private users: Map<string, User>;
+	private joined: boolean;
 
 	public constructor() {
 		this.grids = new Map;
 		this.users = new Map;
+		this.joined = false;
 		
 		const vrtc = VVRTC.create({
 			url: inputUrl.value,
@@ -45,7 +47,15 @@ class App {
 
 		this.startButton = document.getElementById('button_start') as HTMLButtonElement ;
 		this.startButton.addEventListener('click', () => {
-			this.start();
+			if(!this.joined) {
+				this.start();
+				this.joined = true;
+				this.startButton.textContent = "离开房间"
+			} else {
+				this.stop();
+				this.joined = false;
+				this.startButton.textContent = "加入房间"
+			}
 		});
 
 		const shareButton = document.getElementById('button_share') as HTMLButtonElement ;
@@ -83,16 +93,6 @@ class App {
                 echoCancellation: false // TODO: 正式代码要开启回音消除
             },
 		})
-
-	}
-
-	public run() {
-
-	}
-
-	private async start() {
-
-		const vrtc = this.vrtc;
 
 		vrtc.on(VVRTC.EVENT.USER_JOIN, ({userId, userExt}) => {
 			console.log("joined user", userId, ", ext", userExt);
@@ -328,12 +328,49 @@ class App {
 				// }
 			});
 		});
+	}
+
+	public run() {
+
+	}
+
+	private async start() {
+
+		const vrtc = this.vrtc;
 
 		await vrtc.joinRoom({
 			userId: inputUserName.value,
 			roomId: inputRoomName.value,
 			userExt: "this_is_user_ext",
 		});
+
+		// 退出后又加入要重新发布
+		vrtc.muteMic(!this.localMic.checked);
+
+		if (this.localCamera.checked) {
+			const localSmall = document.getElementById('local-small') as HTMLInputElement ;
+
+			vrtc.openLocalCamera({
+				view: this.sendPreview,
+				publish: true,
+				small: localSmall.checked,
+			});
+		} else {
+			vrtc.closeLocalCamera();
+		}
+	}
+
+	private async stop() {
+		await this.vrtc.leaveRoom();
+		await this.clean();
+	}
+
+	private async clean() {
+		this.grids.forEach(grid => {
+			removeUserGrid(grid);
+		});
+
+		this.grids.clear();
 	}
 }
 
