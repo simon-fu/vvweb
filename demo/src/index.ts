@@ -260,10 +260,14 @@ class App {
 
 		vrtc.enableTalkingUsers();
 		vrtc.on(VVRTC.EVENT.TALKING_USERS, (result) => {
-			// console.log("on-audio-volume", result);
+			// console.log("on-talking-users", result);
 			let text = '';
 			result.users.forEach(userId => {
-				text = `${text} ${userId}`
+				if(userId === '') {
+					text = `${text} me`
+				} else {
+					text = `${text} ${userId}`
+				}
 			});
 			inputTalking.value = text;
 		});

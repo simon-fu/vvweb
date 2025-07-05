@@ -426,6 +426,26 @@ export class VVRTC {
                     }
                 }
             });
+
+            if(this.mic.producer && this.mic.producer.rtpSender) {
+                const stats = await this.mic.producer.rtpSender.getStats();
+                stats.forEach(report => {
+                    if (report.type === 'media-source'
+                        && report.kind === 'audio'
+                        && report.audioLevel !== undefined
+                    ) {
+                        const level: number = report.audioLevel;
+                        // console.log('local audioLevel:', level);
+                        if(level >= 0.01 && this.roomConfig) {
+                            const userId = ""; // this.roomConfig.userId;
+                            const exists = this.talkingUsers.some(u => u === userId);
+                            if(!exists) {
+                                this.talkingUsers.push(userId);
+                            }
+                        }
+                    }
+                });
+            }
             
         });
     }
