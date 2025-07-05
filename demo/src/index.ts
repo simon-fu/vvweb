@@ -258,12 +258,12 @@ class App {
 			grid.labelAudio.style.color = '';
 		});
 
-		vrtc.enableAudioVolumeEvaluation();
-		vrtc.on(VVRTC.EVENT.AUDIO_VOLUME, (result) => {
+		vrtc.enableTalkingUsers();
+		vrtc.on(VVRTC.EVENT.TALKING_USERS, (result) => {
 			// console.log("on-audio-volume", result);
 			let text = '';
-			result.actives.forEach(u => {
-				text = `${text} ${u.userId}`
+			result.users.forEach(userId => {
+				text = `${text} ${userId}`
 			});
 			inputTalking.value = text;
 		});

@@ -86,6 +86,7 @@ export const VVRTCEvent = {
     USER_SCREEN_OFF: 'user-screen-off',
     STATISTICS: 'statistics',
     AUDIO_VOLUME: 'audio-volume',
+    TALKING_USERS: 'talking-users',
     
 } as const; 
 
@@ -125,6 +126,9 @@ export declare interface VVRTCEventTypes {
         // 上一次在actives里，这一次音量为0的用户
         silents: string[]; 
 	}];
+    [VVRTCEvent.TALKING_USERS]: [{
+        users: string[];
+    }];
     
 }
 
@@ -315,6 +319,7 @@ export class VVRTC {
     private camera: LocalCamera;
     private screen: LocalShareScreen;
     private mic: LocalMic;
+    
     private lastAudioUsers: UserVolume[];
     private audioVolIntervalId?: NodeJS.Timeout;
     private roomConfig?: JoinRoomConfig;
@@ -325,6 +330,10 @@ export class VVRTC {
     private stats: StatiState;
     private statsIntervalId?: NodeJS.Timeout;
 
+    private talkingUsers: string[];
+    private talkingEventIntervalId?: NodeJS.Timeout;
+    private evalVolumeIntervalId?: NodeJS.Timeout;
+
     private constructor(options: VVRTCOptions) {
         this.url = options.url || "ws://127.0.0.1:11080/ws";
         this.emitter = new VVRTCEmitter();
@@ -333,6 +342,7 @@ export class VVRTC {
         this.screen = {};
         this.mic = {};
         this.lastAudioUsers = [];
+        this.talkingUsers = [];
         this.stats = {
             lastSentVideos: [],
             lastRecvVideos: [],
@@ -365,6 +375,61 @@ export class VVRTC {
         }, safeInterval);
     }
     
+    public enableTalkingUsers(interval?: number) {
+        if(interval && interval <=0 ) {
+            if(this.talkingEventIntervalId) {
+                clearInterval(this.talkingEventIntervalId);
+                this.talkingEventIntervalId = undefined;
+            }
+            if(this.evalVolumeIntervalId) {
+                clearInterval(this.evalVolumeIntervalId);
+                this.evalVolumeIntervalId = undefined;
+            }
+            return;
+        }
+
+        const safeInterval = Math.max(interval ?? 1000, 500);
+        this.talkingEventIntervalId = setInterval(() => {
+            const users = this.talkingUsers;
+            this.talkingUsers = [];
+            this.trigger(VVRTC.EVENT.TALKING_USERS, {
+                users,
+            });
+        }, safeInterval);
+
+        this.evalVolumeIntervalId = setInterval(async () => {
+            await this.evalAudioVolume();
+        }, 100);
+    }
+
+    private async evalAudioVolume() {
+
+        this.users.forEach(async (cell, userId) => {
+            if(!cell.audio?.track) {
+                return;
+            }
+
+            const { rtpReceiver } = cell.audio.track.consumer;
+            if(!rtpReceiver) {
+                return;
+            }
+
+            const sources = rtpReceiver.getSynchronizationSources();
+
+            sources.forEach(src => {
+                // audioLevel: 0.0 ~ 1.0
+                // console.log(`SSRC ${src.source} 的音量：`, src.audioLevel);
+                if(src.audioLevel && src.audioLevel >= 0.01) {
+                    const exists = this.talkingUsers.some(u => u === userId);
+                    if(!exists) {
+                        this.talkingUsers.push(userId);
+                    }
+                }
+            });
+            
+        });
+    }
+
     public enableAudioVolumeEvaluation(interval?: number) {
         if(interval && interval <=0 ) {
             if(this.audioVolIntervalId) {
