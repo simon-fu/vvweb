@@ -359,6 +359,7 @@ class App {
 			userId: inputUserName.value,
 			roomId: inputRoomName.value,
 			userExt: "this_is_user_ext",
+			watchMe: true,
 		});
 
 		// 退出后又加入要重新发布

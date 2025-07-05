@@ -14,6 +14,7 @@ export interface JoinRoomConfig {
 	userId: string;
 	roomId: string;
     userExt?: string;
+    watchMe?: boolean;
 }
 
 export interface Statistics {
@@ -350,14 +351,6 @@ export class VVRTC {
             lastRecvAudios: [],
         };
 
-        // setInterval(async () => {
-        //     await this.getStats();
-        // }, 2000);
-
-        // setInterval(async () => {
-        //     await this.getAudioVolume();
-        // }, 1000);
-
     }
 
     public enableStats(interval?: number) {
@@ -426,28 +419,28 @@ export class VVRTC {
                     }
                 }
             });
-
-            if(this.mic.producer && this.mic.producer.rtpSender) {
-                const stats = await this.mic.producer.rtpSender.getStats();
-                stats.forEach(report => {
-                    if (report.type === 'media-source'
-                        && report.kind === 'audio'
-                        && report.audioLevel !== undefined
-                    ) {
-                        const level: number = report.audioLevel;
-                        // console.log('local audioLevel:', level);
-                        if(level >= 0.01 && this.roomConfig) {
-                            const userId = ""; // this.roomConfig.userId;
-                            const exists = this.talkingUsers.some(u => u === userId);
-                            if(!exists) {
-                                this.talkingUsers.push(userId);
-                            }
-                        }
-                    }
-                });
-            }
             
         });
+
+        if(this.mic.producer && this.mic.producer.rtpSender) {
+            const stats = await this.mic.producer.rtpSender.getStats();
+            stats.forEach(report => {
+                if (report.type === 'media-source'
+                    && report.kind === 'audio'
+                    && report.audioLevel !== undefined
+                ) {
+                    const level: number = report.audioLevel;
+                    // console.log('local audioLevel:', level);
+                    if(level >= 0.01 && this.roomConfig) {
+                        const userId = ""; // this.roomConfig.userId;
+                        const exists = this.talkingUsers.some(u => u === userId);
+                        if(!exists) {
+                            this.talkingUsers.push(userId);
+                        }
+                    }
+                }
+            });
+        }
     }
 
     public enableAudioVolumeEvaluation(interval?: number) {
@@ -1622,8 +1615,13 @@ export class VVRTC {
             checkVideoSource(cell.screen.track.consumer.track, cell.screen.view);
         }
     }
+
     
     private async tryListenUserAudio(cell: UserCell) {
+        if(this.ignoreMe(cell.user.id)) {
+            return;
+        }
+
         const found = Object.entries(cell.user.streams)
         .find(([_key, stream]) => stream.stype == StreamType.Mic);
 
@@ -1710,10 +1708,21 @@ export class VVRTC {
         };
     }
 
+    private ignoreMe(userId: string): boolean {
+        if(this.roomConfig) {
+            if(!this.roomConfig.watchMe && this.roomConfig.userId === userId) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     private async updateUser(newUser: User): Promise<any> {
-        // if(newUser.id == this.roomConfig?.userId) {
-        //     return;
-        // }
+
+        if(this.ignoreMe(newUser.id)) {
+            return;
+        }
+
 
         let cell = this.users.get(newUser.id);
         if(!cell) {
