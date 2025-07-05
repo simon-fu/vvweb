@@ -69,6 +69,12 @@ export interface RemoteStatistic {
 	userId: string;
 }
 
+export interface UserVolume {
+    userId: string;
+    volume: number;
+}
+
+
 export const VVRTCEvent = {
     USER_JOIN: 'user-join',
     USER_LEAVE: 'user-leave',
@@ -79,6 +85,7 @@ export const VVRTCEvent = {
     USER_SCREEN_ON: 'user-screen-on',
     USER_SCREEN_OFF: 'user-screen-off',
     STATISTICS: 'statistics',
+    AUDIO_VOLUME: 'audio-volume',
     
 } as const; 
 
@@ -110,6 +117,14 @@ export declare interface VVRTCEventTypes {
 		userId: string;
 	}];
     [VVRTCEvent.STATISTICS]: [statistics: Statistics];
+
+    [VVRTCEvent.AUDIO_VOLUME]: [{
+        // 当前正在说话的用户
+		actives: UserVolume[]; 
+
+        // 上一次在actives里，这一次音量为0的用户
+        silents: string[]; 
+	}];
     
 }
 
@@ -298,22 +313,26 @@ export class VVRTC {
     private client?: Client;
     private users: Map<string, UserCell>;
     private camera: LocalCamera;
-    private mic: LocalMic;
     private screen: LocalShareScreen;
+    private mic: LocalMic;
+    private lastAudioUsers: UserVolume[];
+    private audioVolIntervalId?: NodeJS.Timeout;
     private roomConfig?: JoinRoomConfig;
     private producerTransportId?: string;
     private producerTransport?: Transport<AppData>;
     // private producerRtpParam?: RtpParameters;
     private consumerTransport?: Transport<AppData>;
     private stats: StatiState;
+    private statsIntervalId?: NodeJS.Timeout;
 
     private constructor(options: VVRTCOptions) {
         this.url = options.url || "ws://127.0.0.1:11080/ws";
         this.emitter = new VVRTCEmitter();
         this.users = new Map;
         this.camera = {};
-        this.mic = {};
         this.screen = {};
+        this.mic = {};
+        this.lastAudioUsers = [];
         this.stats = {
             lastSentVideos: [],
             lastRecvVideos: [],
@@ -321,10 +340,89 @@ export class VVRTC {
             lastRecvAudios: [],
         };
 
-        setInterval(async () => {
+        // setInterval(async () => {
+        //     await this.getStats();
+        // }, 2000);
+
+        // setInterval(async () => {
+        //     await this.getAudioVolume();
+        // }, 1000);
+
+    }
+
+    public enableStats(interval?: number) {
+        if(interval && interval <=0 ) {
+            if(this.statsIntervalId) {
+                clearInterval(this.statsIntervalId);
+                this.statsIntervalId = undefined;
+            }
+            return;
+        }
+
+        const safeInterval = Math.max(interval ?? 1500, 1000);
+        this.statsIntervalId = setInterval(async () => {
             await this.getStats();
-        }, 2000);
-        // clearInterval(intervalId);
+        }, safeInterval);
+    }
+    
+    public enableAudioVolumeEvaluation(interval?: number) {
+        if(interval && interval <=0 ) {
+            if(this.audioVolIntervalId) {
+                clearInterval(this.audioVolIntervalId);
+                this.audioVolIntervalId = undefined;
+            }
+            return;
+        }
+
+        const safeInterval = Math.max(interval ?? 1000, 100);
+        this.audioVolIntervalId = setInterval(async () => {
+            await this.getAudioVolume();
+        }, safeInterval);
+    }
+
+    private async getAudioVolume() {
+
+        const actives: UserVolume[] = []; 
+
+        this.users.forEach(async (cell, userId) => {
+            if(!cell.audio?.track) {
+                return;
+            }
+
+            const { rtpReceiver } = cell.audio.track.consumer;
+            if(!rtpReceiver) {
+                return;
+            }
+
+            const sources = rtpReceiver.getSynchronizationSources();
+
+            sources.forEach(src => {
+                // audioLevel: 0.0 ~ 1.0
+                // console.log(`SSRC ${src.source} 的音量：`, src.audioLevel);
+                if(src.audioLevel && src.audioLevel >= 0.01) {
+                    actives.push({
+                        userId,
+                        volume: src.audioLevel,
+                    });
+                }
+            });
+            
+        });
+
+        const silents: string[] = [];
+        this.lastAudioUsers.forEach(last => {
+            const exists = actives.some(u => u.userId === last.userId);
+            if(!exists) {
+                silents.push(last.userId);
+            }
+        });
+
+        this.lastAudioUsers = actives;
+
+        this.trigger(VVRTC.EVENT.AUDIO_VOLUME, {
+            actives,
+            silents,
+        });
     }
 
     private async getStats() {
@@ -860,6 +958,7 @@ export class VVRTC {
     private cleanUser(cell: UserCell) {
         if (cell.audio) {
             document.body.removeChild(cell.audio.view);
+            cell.audio = undefined; // 方便检测音量等操作检测到结束
         }
     }
 

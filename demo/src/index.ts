@@ -258,6 +258,17 @@ class App {
 			grid.labelAudio.style.color = '';
 		});
 
+		vrtc.enableAudioVolumeEvaluation();
+		vrtc.on(VVRTC.EVENT.AUDIO_VOLUME, (result) => {
+			// console.log("on-audio-volume", result);
+			let text = '';
+			result.actives.forEach(u => {
+				text = `${text} ${u.userId}`
+			});
+			inputTalking.value = text;
+		});
+
+		vrtc.enableStats();
 		vrtc.on(VVRTC.EVENT.STATISTICS, (stats) => {
 			// console.log("event stats", stats);
 			const overlay = document.getElementById('statsOverlay');
@@ -580,6 +591,10 @@ if (inputUserName) {
 	inputUserName.value = urlParams.get("user") ?? generateRandomString(6);
 }
 
+const inputTalking = document.getElementById('input_talking') as HTMLInputElement;
+// if (inputTalking) {
+// 	inputTalking.value = "abc";
+// }
 
 const app = new App();
 app.run();
