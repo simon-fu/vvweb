@@ -11,6 +11,7 @@ interface UserGrid {
 	labelAudio: HTMLLabelElement;
 	stateSmall: HTMLInputElement;
 	labelSmall: HTMLLabelElement;
+	labelVolume: HTMLLabelElement;
 	overlay: HTMLDivElement;
 	// layerSelect: HTMLSelectElement; 
 }
@@ -272,6 +273,22 @@ class App {
 			inputTalking.value = text;
 		});
 
+		vrtc.enableAudioVolume();
+		vrtc.on(VVRTC.EVENT.AUDIO_VOLUME, (result) => {
+			// console.log("on-audio-volume", result);
+			result.volumes.forEach(user => {
+				if(user.userId === "") {
+					localVolume.textContent = user.volume.toFixed(2);
+				} else {
+					const grid = this.grids.get(user.userId);
+					if(grid) {
+						grid.labelVolume.textContent = user.volume.toFixed(2);
+					}
+				}
+			});
+		});
+
+
 		vrtc.enableStats();
 		vrtc.on(VVRTC.EVENT.STATISTICS, (stats) => {
 			// console.log("event stats", stats);
@@ -477,6 +494,9 @@ function addUserGrid(id: string): UserGrid {
 
 	const stateSmall = document.createElement('input');
 	const labelSmall = document.createElement('label');
+	const labelVolume = document.createElement('label');
+		// <label >|  Volume </label>
+		// <label id="local-volume">0.00</label>
 	{	
 		
 		stateSmall.type = 'checkbox';
@@ -487,12 +507,23 @@ function addUserGrid(id: string): UserGrid {
 		// stateSmall.checked = true;
 		stateSmall.style.marginRight = '4px';
 
-		const label = labelSmall;
-		stateContainer.appendChild(label);
-		label.htmlFor = id + 'state-small';
-		label.innerText = 'Small';
-		// label.hidden = true;
-		label.style.marginRight = '8px';
+		{
+			const label = labelSmall;
+			stateContainer.appendChild(label);
+			label.htmlFor = id + 'state-small';
+			label.innerText = 'Small';
+			// label.hidden = true;
+			label.style.marginRight = '8px';
+		}
+
+		{
+			const label = document.createElement('label');
+			label.innerText = '|  Vol ';
+			stateContainer.appendChild(label);
+
+			stateContainer.appendChild(labelVolume);
+		}
+
 	}
 
 	// const layerSelect = document.createElement("select");
@@ -549,6 +580,7 @@ function addUserGrid(id: string): UserGrid {
 		labelVideo,
 		stateSmall,
 		labelSmall,
+		labelVolume,
 		overlay,
 		// layerSelect,
 	};
@@ -597,9 +629,9 @@ if (inputUserName) {
 }
 
 const inputTalking = document.getElementById('input_talking') as HTMLInputElement;
-// if (inputTalking) {
-// 	inputTalking.value = "abc";
-// }
+
+const localVolume = document.getElementById('local-volume') as HTMLLabelElement ;
+
 
 const app = new App();
 app.run();

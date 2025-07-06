@@ -122,10 +122,7 @@ export declare interface VVRTCEventTypes {
 
     [VVRTCEvent.AUDIO_VOLUME]: [{
         // 当前正在说话的用户
-		actives: UserVolume[]; 
-
-        // 上一次在actives里，这一次音量为0的用户
-        silents: string[]; 
+		volumes: UserVolume[]; 
 	}];
     [VVRTCEvent.TALKING_USERS]: [{
         users: string[];
@@ -321,8 +318,6 @@ export class VVRTC {
     private screen: LocalShareScreen;
     private mic: LocalMic;
     
-    private lastAudioUsers: UserVolume[];
-    private audioVolIntervalId?: NodeJS.Timeout;
     private roomConfig?: JoinRoomConfig;
     private producerTransportId?: string;
     private producerTransport?: Transport<AppData>;
@@ -335,6 +330,9 @@ export class VVRTC {
     private talkingEventIntervalId?: NodeJS.Timeout;
     private evalVolumeIntervalId?: NodeJS.Timeout;
 
+    private userVolumes?: UserVolume[];
+    private volumeEventIntervalId?: NodeJS.Timeout;
+
     private constructor(options: VVRTCOptions) {
         this.url = options.url || "ws://127.0.0.1:11080/ws";
         this.emitter = new VVRTCEmitter();
@@ -342,8 +340,8 @@ export class VVRTC {
         this.camera = {};
         this.screen = {};
         this.mic = {};
-        this.lastAudioUsers = [];
         this.talkingUsers = [];
+        // this.userVolumes = [];
         this.stats = {
             lastSentVideos: [],
             lastRecvVideos: [],
@@ -374,10 +372,9 @@ export class VVRTC {
                 clearInterval(this.talkingEventIntervalId);
                 this.talkingEventIntervalId = undefined;
             }
-            if(this.evalVolumeIntervalId) {
-                clearInterval(this.evalVolumeIntervalId);
-                this.evalVolumeIntervalId = undefined;
-            }
+            
+            this.stopEvalVolume();
+            
             return;
         }
 
@@ -390,12 +387,12 @@ export class VVRTC {
             });
         }, safeInterval);
 
-        this.evalVolumeIntervalId = setInterval(async () => {
-            await this.evalAudioVolume();
-        }, 100);
+        this.startEvalVolume();
     }
 
-    private async evalAudioVolume() {
+    private async evalAudioVolume(): Promise<UserVolume[]> {
+
+        const volumes: UserVolume[] = [];
 
         this.users.forEach(async (cell, userId) => {
             if(!cell.audio?.track) {
@@ -412,11 +409,17 @@ export class VVRTC {
             sources.forEach(src => {
                 // audioLevel: 0.0 ~ 1.0
                 // console.log(`SSRC ${src.source} 的音量：`, src.audioLevel);
-                if(src.audioLevel && src.audioLevel >= 0.01) {
-                    const exists = this.talkingUsers.some(u => u === userId);
-                    if(!exists) {
-                        this.talkingUsers.push(userId);
+                if(src.audioLevel) {
+                    if(src.audioLevel >= 0.01) {
+                        const exists = this.talkingUsers.some(u => u === userId);
+                        if(!exists) {
+                            this.talkingUsers.push(userId);
+                        }
                     }
+                    volumes.push({
+                        userId,
+                        volume: src.audioLevel,
+                    });
                 }
             });
             
@@ -438,69 +441,61 @@ export class VVRTC {
                             this.talkingUsers.push(userId);
                         }
                     }
+                    volumes.push({
+                        userId: "",
+                        volume: level,
+                    })
                 }
             });
         }
+
+        // this.userVolumes = volumes;
+        return volumes;
+
     }
 
-    public enableAudioVolumeEvaluation(interval?: number) {
+    public enableAudioVolume(interval?: number) {
         if(interval && interval <=0 ) {
-            if(this.audioVolIntervalId) {
-                clearInterval(this.audioVolIntervalId);
-                this.audioVolIntervalId = undefined;
+            if(this.volumeEventIntervalId) {
+                clearInterval(this.volumeEventIntervalId);
+                this.volumeEventIntervalId = undefined;
             }
             return;
         }
 
-        const safeInterval = Math.max(interval ?? 1000, 100);
-        this.audioVolIntervalId = setInterval(async () => {
-            await this.getAudioVolume();
+        const safeInterval = Math.max(interval ?? 1000, 200);
+        this.volumeEventIntervalId = setInterval(async () => {
+            let volumes ;
+            if(!this.userVolumes) {
+                volumes = await this.evalAudioVolume();
+            } else {
+                volumes = this.userVolumes;
+                this.userVolumes = undefined;
+            }
+
+            this.trigger(VVRTC.EVENT.AUDIO_VOLUME, {
+                volumes,
+            });
         }, safeInterval);
     }
 
-    private async getAudioVolume() {
+    private startEvalVolume() {
+        if(!this.evalVolumeIntervalId) {
+            this.evalVolumeIntervalId = setInterval(async () => {
+                this.userVolumes = await this.evalAudioVolume();
+            }, 100);
+        }
+    }
 
-        const actives: UserVolume[] = []; 
+    private stopEvalVolume() {
+        if(this.talkingEventIntervalId || this.volumeEventIntervalId) {
+            return;
+        }
 
-        this.users.forEach(async (cell, userId) => {
-            if(!cell.audio?.track) {
-                return;
-            }
-
-            const { rtpReceiver } = cell.audio.track.consumer;
-            if(!rtpReceiver) {
-                return;
-            }
-
-            const sources = rtpReceiver.getSynchronizationSources();
-
-            sources.forEach(src => {
-                // audioLevel: 0.0 ~ 1.0
-                // console.log(`SSRC ${src.source} 的音量：`, src.audioLevel);
-                if(src.audioLevel && src.audioLevel >= 0.01) {
-                    actives.push({
-                        userId,
-                        volume: src.audioLevel,
-                    });
-                }
-            });
-            
-        });
-
-        const silents: string[] = [];
-        this.lastAudioUsers.forEach(last => {
-            const exists = actives.some(u => u.userId === last.userId);
-            if(!exists) {
-                silents.push(last.userId);
-            }
-        });
-
-        this.lastAudioUsers = actives;
-
-        this.trigger(VVRTC.EVENT.AUDIO_VOLUME, {
-            actives,
-            silents,
-        });
+        if(this.evalVolumeIntervalId) {
+            clearInterval(this.evalVolumeIntervalId);
+            this.evalVolumeIntervalId = undefined;
+        }
     }
 
     private async getStats() {
@@ -1606,10 +1601,6 @@ export class VVRTC {
                 return ;
             }
     
-            // if (!cell.video) {
-            //     cell.video = {};
-            // }
-    
             cell.screen.track = track;
 
             checkVideoSource(cell.screen.track.consumer.track, cell.screen.view);
@@ -1618,9 +1609,9 @@ export class VVRTC {
 
     
     private async tryListenUserAudio(cell: UserCell) {
-        if(this.ignoreMe(cell.user.id)) {
-            return;
-        }
+        // if(this.ignoreMe(cell.user.id)) {
+        //     return;
+        // }
 
         const found = Object.entries(cell.user.streams)
         .find(([_key, stream]) => stream.stype == StreamType.Mic);
@@ -1646,35 +1637,6 @@ export class VVRTC {
             }
     
             cell.audio.track = track;
-
-            // const { rtpReceiver } = cell.audio.track.consumer;
-            // if (rtpReceiver) {
-            //     setInterval(() => {
-            //         // 方法 A：更简单，拿到同步源列表
-            //         const csources = rtpReceiver.getContributingSources();
-            //         csources.forEach(src => {
-            //             // audioLevel: 0.0 ~ 1.0
-            //             console.log(`CSSRC ${src.source} 的音量：`, src.audioLevel);
-            //         });
-
-            //         const sources = rtpReceiver.getSynchronizationSources();
-            //         sources.forEach(src => {
-            //             // audioLevel: 0.0 ~ 1.0
-            //             console.log(`SSRC ${src.source} 的音量：`, src.audioLevel);
-            //         });
-
-            //         // // 方法 B：用 stats（可以同时拿到更多网络指标）
-            //         // rtpReceiver.getStats().then(stats => {
-            //         //     stats.forEach(report => {
-            //         //         if (report.type === 'inbound-rtp' &&
-            //         //             report.mediaType === 'audio' &&
-            //         //             report.audioLevel !== undefined) {
-            //         //             console.log('音频电平（inbound-rtp）：', report.audioLevel);
-            //         //         }
-            //         //     });
-            //         // });
-            //     }, 200);
-            // }
 
             checkAudioSource(cell.audio.track.consumer.track, cell.audio.view);
         }
