@@ -65,7 +65,7 @@ class App {
 		});
 
 		this.localCamera = document.getElementById('local-camera') as HTMLInputElement ;
-		this.localCamera.checked = true;
+		this.localCamera.checked = cfgCameraOn;
 		this.localCamera.addEventListener('click', () => {
 			console.log("click local camera", this.localCamera.checked);
 
@@ -84,7 +84,7 @@ class App {
 		});
 
 		this.localMic = document.getElementById('local-mic') as HTMLInputElement ;
-		this.localMic.checked = true;
+		this.localMic.checked = cfgMicOn;
 		this.localMic.addEventListener('click', () => {
 			console.log("click local mic", this.localMic.checked);
 
@@ -98,7 +98,7 @@ class App {
 		})
 
 		vrtc.on(VVRTC.EVENT.USER_JOIN, ({userId, userExt}) => {
-			console.log("joined user", userId, ", ext", userExt);
+			console.log("on USER_JOIN: user", userId, ", ext", userExt);
 			
 			const user: User = {
 				grids: [],
@@ -149,7 +149,7 @@ class App {
 		});
 
 		vrtc.on(VVRTC.EVENT.USER_LEAVE, ({userId}) => {
-			console.log("leaved user", userId);
+			console.log("on USER_LEAVE: user", userId);
 			const user = this.users.get(userId);
 			if (!user) {
 				return;
@@ -166,7 +166,7 @@ class App {
 		});
 
 		vrtc.on(VVRTC.EVENT.USER_CAMERA_ON, ({userId}) => {
-			console.log("switch camera on, user", userId);
+			console.log("on USER_CAMERA_ON: user", userId);
 			const grid = this.grids.get(userId)
 			
 			if (!grid) {
@@ -188,7 +188,7 @@ class App {
 		});
 
 		vrtc.on(VVRTC.EVENT.USER_CAMERA_OFF, ({userId}) => {
-			console.log("switch camera off, user", userId);
+			console.log("on USER_CAMERA_OFF: user", userId);
 			const grid = this.grids.get(userId)
 			
 			if (!grid) {
@@ -199,7 +199,7 @@ class App {
 		});
 
 		vrtc.on(VVRTC.EVENT.USER_SCREEN_ON, ({userId}) => {
-			console.log("switch screen on, user", userId);
+			console.log("on USER_SCREEN_ON: user", userId);
 			
 			const user = this.users.get(userId);
 			if(!user) {
@@ -221,7 +221,7 @@ class App {
 		});
 
 		vrtc.on(VVRTC.EVENT.USER_SCREEN_OFF, ({userId}) => {
-			console.log("switch screen off, user", userId);
+			console.log("on USER_SCREEN_OFF: user", userId);
 			
 			const user = this.users.get(userId);
 			if(!user) {
@@ -238,7 +238,7 @@ class App {
 		});
 
 		vrtc.on(VVRTC.EVENT.USER_MIC_ON, ({userId}) => {
-			console.log("on USER_MIC_ON: ", userId);
+			console.log("on USER_MIC_ON: user", userId);
 			const grid = this.grids.get(userId)
 			
 			if (!grid) {
@@ -249,7 +249,7 @@ class App {
 		});
 
 		vrtc.on(VVRTC.EVENT.USER_MIC_OFF, ({userId}) => {
-			console.log("on switch mic off, user", userId);
+			console.log("on USER_MIC_OFF: user", userId);
 			const grid = this.grids.get(userId)
 			
 			if (!grid) {
@@ -261,7 +261,7 @@ class App {
 
 		vrtc.enableTalkingUsers();
 		vrtc.on(VVRTC.EVENT.TALKING_USERS, (result) => {
-			// console.log("on-talking-users", result);
+			// console.log("on TALKING_USERS: ", result);
 			let text = '';
 			result.users.forEach(userId => {
 				if(userId === '') {
@@ -275,7 +275,7 @@ class App {
 
 		vrtc.enableAudioVolume();
 		vrtc.on(VVRTC.EVENT.AUDIO_VOLUME, (result) => {
-			// console.log("on-audio-volume", result);
+			// console.log("on AUDIO_VOLUME: ", result);
 			result.volumes.forEach(user => {
 				if(user.userId === "") {
 					localVolume.textContent = user.volume.toFixed(2);
@@ -291,7 +291,7 @@ class App {
 
 		vrtc.enableStats();
 		vrtc.on(VVRTC.EVENT.STATISTICS, (stats) => {
-			// console.log("event stats", stats);
+			// console.log("on STATISTICS: ", stats);
 			const overlay = document.getElementById('statsOverlay');
 			if (overlay) {
 				let text = '';
@@ -376,7 +376,7 @@ class App {
 			userId: inputUserName.value,
 			roomId: inputRoomName.value,
 			userExt: "this_is_user_ext",
-			watchMe: true,
+			watchMe: cfgWatchMe,
 		});
 
 		// 退出后又加入要重新发布
@@ -631,6 +631,21 @@ if (inputUserName) {
 const inputTalking = document.getElementById('input_talking') as HTMLInputElement;
 
 const localVolume = document.getElementById('local-volume') as HTMLLabelElement ;
+
+const cfgWatchMe = getQueryBool(urlParams, "watchMe") ?? true;
+const cfgMicOn = getQueryBool(urlParams, "mic") ?? true;
+const cfgCameraOn = getQueryBool(urlParams, "camera") ?? true; 
+
+function getQueryBool(params: URLSearchParams, key: string): boolean | undefined {
+//   const params = new URLSearchParams(window.location.search);
+  const value = params.get(key);
+
+  if (value === null) return undefined; // 参数不存在
+  if (value === '' || value.toLowerCase() === 'true' || value === '1') return true;
+  if (value.toLowerCase() === 'false' || value === '0') return false;
+
+  return undefined; // 不可识别的值
+}
 
 
 const app = new App();
