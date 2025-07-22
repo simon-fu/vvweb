@@ -238,7 +238,7 @@ class App {
 		});
 
 		vrtc.on(VVRTC.EVENT.USER_MIC_ON, ({userId}) => {
-			console.log("switch mic on, user", userId);
+			console.log("on USER_MIC_ON: ", userId);
 			const grid = this.grids.get(userId)
 			
 			if (!grid) {

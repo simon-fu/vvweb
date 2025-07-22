@@ -1842,6 +1842,7 @@ export class VVRTC {
         this.users.forEach( (cell, _userId) => {
             this.tryWatchUserCamera(cell);
             this.tryWatchUserScreen(cell);
+            this.tryListenUserAudio(cell);
         });
     }
 
