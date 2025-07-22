@@ -93,7 +93,7 @@ class App {
 
 		vrtc.setMic({
 			constraints: {
-                echoCancellation: false // TODO: 正式代码要开启回音消除
+                echoCancellation: cfgEchoCancel // TODO: 正式代码要开启回音消除
             },
 		})
 
@@ -635,6 +635,7 @@ const localVolume = document.getElementById('local-volume') as HTMLLabelElement 
 const cfgWatchMe = getQueryBool(urlParams, "watchMe") ?? true;
 const cfgMicOn = getQueryBool(urlParams, "mic") ?? true;
 const cfgCameraOn = getQueryBool(urlParams, "camera") ?? true; 
+const cfgEchoCancel = getQueryBool(urlParams, "echoCancel") ?? true;
 
 function getQueryBool(params: URLSearchParams, key: string): boolean | undefined {
 //   const params = new URLSearchParams(window.location.search);
