@@ -637,6 +637,18 @@ const cfgMicOn = getQueryBool(urlParams, "mic") ?? true;
 const cfgCameraOn = getQueryBool(urlParams, "camera") ?? true; 
 const cfgEchoCancel = getQueryBool(urlParams, "echoCancel") ?? true;
 
+const textaArgs = document.getElementById('texta_args') as HTMLTextAreaElement;
+textaArgs.value = 
+`ws - Websocket url, e.g. ws://127.0.0.1:11080/ws, wss://tt1.rtcsdk.com:11443/ws.
+room - Room name.
+user - User name, default random string.
+watchMe - Enable watching myself, default true.
+mic - Enable micphone, default true.
+camera = Enable camera, default true.
+echoCancel - Enable audio echo cancellation, default true.
+`;
+
+
 function getQueryBool(params: URLSearchParams, key: string): boolean | undefined {
 //   const params = new URLSearchParams(window.location.search);
   const value = params.get(key);
