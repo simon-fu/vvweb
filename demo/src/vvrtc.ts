@@ -1267,7 +1267,11 @@ export class VVRTC {
         await this.checkMic();
     }
 
-    private async checkCamera() {
+    private async checkCamera(reason?: string) {
+        if(reason) {
+            this.camera.updated = reason;
+        }
+
         if (this.camera.checking) {
             return;
         }
@@ -1423,7 +1427,11 @@ export class VVRTC {
         }
     }
 
-    private async checkMic() {
+    private async checkMic(reason?: string) {
+        if(reason) {
+            this.mic.updated = reason;
+        }
+
         if (this.mic.checking) {
             return;
         }
@@ -2028,8 +2036,8 @@ export class VVRTC {
     }
 
     private async checkPublish() {
-        this.checkCamera();
-        this.checkMic();
+        this.checkCamera("checkPublish");
+        this.checkMic("checkPublish");
     }
 
     private async checkSubscribe() {
