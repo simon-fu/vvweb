@@ -2,7 +2,7 @@
 import { Device } from 'mediasoup-client';
 import { Transport } from 'mediasoup-client/lib/Transport';
 import { AppData, Producer, Consumer } from 'mediasoup-client/lib/types';
-import { Client, User, Notice, Stream, Status} from "./client";
+import { Client, User, Notice, Stream} from "./client";
 // import { EventEmitter, Listener } from "./emitter";
 import { ROUTER_RTP_CAPABILITIES } from './rtp_capabilities';
 
@@ -88,6 +88,7 @@ export const VVRTCEvent = {
     STATISTICS: 'statistics',
     AUDIO_VOLUME: 'audio-volume',
     TALKING_USERS: 'talking-users',
+    CLOSED_BY_SERVER: 'closed-by-server'
     
 } as const; 
 
@@ -126,6 +127,10 @@ export declare interface VVRTCEventTypes {
 	}];
     [VVRTCEvent.TALKING_USERS]: [{
         users: string[];
+    }];
+    [VVRTCEvent.CLOSED_BY_SERVER]: [{
+        code: number;
+        reason: string;
     }];
     
 }
@@ -185,6 +190,7 @@ export declare interface LocalCameraConfig {
 	view?: HTMLVideoElement;
 	publish?: boolean; // 加入房间后是否要发布，默认发布
     small?: boolean; // 是否开启小流，默认不开启
+    constraints?: MediaTrackConstraints;
 	// mute?: boolean | string;
 	// option?: {
 	// 	cameraId?: string;
@@ -248,18 +254,25 @@ interface ConsumeTrack {
 
 interface LocalCamera {
     config?: LocalCameraConfig,
+    active?: LocalCameraConfig,
     stream?: MediaStream;
-    // producerId?: string,
     producer?: Producer<AppData>,
+    updated?: string,
+    checking?: boolean,
 }
 
 interface LocalMic {
     config?: MicConfig,
+    active?: MicConfig,
     stream?: MediaStream;
-    producerId?: string,
+    // producerId?: string,
     producer?: Producer<AppData>,
+    
     muted?: boolean,
     serverMuted?: boolean,
+
+    updated?: string,
+    checking?: boolean,
 }
 
 interface LocalShareScreen {
@@ -975,15 +988,31 @@ export class VVRTC {
             }
         });
 
-        client.on("closed", async (status: Status) => {
-            console.log("recv closed", status);
+        client.on("closed", async (ev: any) => {
+            console.log("recv closed: ", ev); 
+
             await this.cleanUp();
+
+            const { code, reason } = ev.status; 
+            this.trigger(VVRTC.EVENT.CLOSED_BY_SERVER, {
+                code,
+                reason,
+            });
         });
 
-        await Promise.allSettled([
-            this.createProducerTransport(),
-            this.createConsumerTransport(),
-        ]);
+        setTimeout(async () => {
+            try {
+                await Promise.all([
+                    this.createProducerTransport(),
+                    this.createConsumerTransport(),
+                ]);
+            } catch(error) {
+                console.warn("create transport error", error);
+                // throw error;
+            }
+
+        }, 0);
+
 
     }
 
@@ -998,24 +1027,40 @@ export class VVRTC {
         await this.cleanUp();
     }
 
+    public async endRoom(): Promise<void> {
+        if(!this.client || !this.roomConfig) {
+            return;
+        }
+
+        const rsp = await this.client.end_room(this.roomConfig.roomId);
+        console.log("end room response", rsp);   
+
+        await this.cleanUp();
+    }
+
     private async cleanUp() {
         this.users.forEach(async cell => {
-            if(cell.audio) {
-                this.cleanUser(cell);
-            }
+            this.cleanUser(cell);
         });
         this.users.clear();
 
-        this.camera.config = undefined;
-        this.camera.stream = undefined;
-        this.camera.producer = undefined;
+        // 避免关闭 camera/mic 时 unpublish
+        this.client = undefined;
 
-        this.mic.config = undefined;
-        this.mic.muted = undefined;
-        this.mic.producer = undefined;
-        this.mic.producerId = undefined;
-        this.mic.serverMuted = undefined;
-        this.mic.stream = undefined;
+        await this.closeLocalCamera();
+  
+        // this.camera.config = undefined;
+        // this.camera.stream = undefined;
+        // this.camera.producer = undefined;
+
+        await this.closeLocalMic();
+
+        // this.mic.config = undefined;
+        // this.mic.muted = undefined;
+        // this.mic.producer = undefined;
+        // // this.mic.producerId = undefined;
+        // this.mic.serverMuted = undefined;
+        // this.mic.stream = undefined;
 
         this.screen.producer = undefined;
         this.screen.stream = undefined;
@@ -1025,7 +1070,6 @@ export class VVRTC {
         this.producerTransport = undefined;
         this.consumerTransport = undefined;
 
-        this.client = undefined;
     }
 
     private cleanUser(cell: UserCell) {
@@ -1057,7 +1101,7 @@ export class VVRTC {
         console.log("created local send transport", this.producerTransport);
 
         this.producerTransport
-            .on('connect', async ({ dtlsParameters }, success, fail) =>
+            .on('connect', async ({ dtlsParameters }, success, _fail) =>
             {
                 // 创建第一个 producer 时才会执行到这里
                 console.log("producerTransport on connect", dtlsParameters);
@@ -1070,9 +1114,11 @@ export class VVRTC {
                     
                     success();
                 } catch (err) {
-                    // Tell the transport that something was wrong.
-                    const error = err instanceof Error ? err : new Error(String(err));
-                    fail(error);
+                    // TODO: 如果调用 fail(error) 会导致未处理的错误
+                    console.warn("connect_transport error", err);
+                    success();
+                    // const error = err instanceof Error ? err : new Error(String(err));
+                    // fail(error);
                 }
             })
             .on('produce', async ({ kind, rtpParameters, appData }, success, fail) =>
@@ -1142,7 +1188,7 @@ export class VVRTC {
             console.log("created local recv transport", consumerTransport);
         }
     
-        consumerTransport.on('connect', async ({ dtlsParameters }, success, fail) => {
+        consumerTransport.on('connect', async ({ dtlsParameters }, success, _fail) => {
             console.log("consumer on connect", dtlsParameters);
     
             try {
@@ -1150,8 +1196,11 @@ export class VVRTC {
                 console.log("connected consumerTransport", consumerTransportId, rsp);
                 success();
             } catch (err) {
-                const error = err instanceof Error ? err : new Error(String(err));
-                fail(error);
+                // TODO: 如果调用 fail(error) 会导致未处理的错误
+                console.warn("connect_transport error", err);
+                success();
+                // const error = err instanceof Error ? err : new Error(String(err));
+                // fail(error);
             }
         
         });
@@ -1162,53 +1211,49 @@ export class VVRTC {
     }
 
     public async openLocalCamera(config?: LocalCameraConfig) {
-        if(!this.camera.stream) {
-            this.camera.stream = await navigator.mediaDevices.getUserMedia({
-                video : {
-                    width : {
-                        ideal : 1280
-                    },
-                    height : {
-                        ideal : 720
-                    },
-                    frameRate : {
-                        ideal : 60
-                    }
-                }
-            });
-            console.log("opened camera");
+        if (!config) {
+            config = {};
         }
 
         this.camera.config = config;
 
-        await this.checkCamera();
+        this.camera.updated = "openLocalCamera";
 
-        // throw new Error(`元素 ID 不存在`);
+        await this.checkCamera();
     }
 
     public async closeLocalCamera() {
-        const camera = this.camera;
 
-        if(camera.config) {
-            if(camera.config.view ) {
-                camera.config.view.srcObject = null;
-            }
-        }
+        this.camera.config = undefined;
 
-        if (camera.stream) {
-            camera.stream.getTracks().forEach(track => track.stop());
-        }
-
-        camera.stream = undefined;
-        camera.config = undefined;
+        this.camera.updated = "closeLocalCamera";
 
         await this.checkCamera();
     }
 
-    // 配置麦克风参数，本接口不会真正打开/关闭麦克风  
-    public async setMic(config?: MicConfig) {
+    // // 配置麦克风参数，本接口不会真正打开/关闭麦克风  
+    // public async setMic(config?: MicConfig) {
 
+    //     this.mic.config = config;
+
+    //     await this.checkMic();
+    // }
+
+    public async openLocalMic(config?: MicConfig) {
+        if (!config) {
+            config = {};
+        }
         this.mic.config = config;
+
+        this.mic.updated = "openLocalMic";
+
+        await this.checkMic();
+    }
+
+    public async closeLocalMic() {
+        this.mic.config = undefined;
+
+        this.mic.updated = "closeLocalMic";
 
         await this.checkMic();
     }
@@ -1218,162 +1263,311 @@ export class VVRTC {
     // 若加入房间后，第一次设置 muted = false 时打开麦克风，然后设置 muted = true，不会关闭麦克风，只是本地静音且服务器不转发音频数据。
     public async muteMic(muted: boolean) {
         this.mic.muted = muted;
+        this.mic.updated = "muteMic";
         await this.checkMic();
     }
 
     private async checkCamera() {
+        if (this.camera.checking) {
+            return;
+        }
+
+        this.camera.checking = true;
+
+        while(this.camera.updated) {
+            console.log("check camera updated", this.camera.updated);
+            this.camera.updated = undefined;
+            // await this.checkCameraOnce();
+
+            {
+                const config = this.camera.config;
+                
+                if (!config) {
+                    // 处理关闭请求
+                    await this.checkCameraOff();
+                    this.camera.active = undefined;
+                } else {
+                    // 处理打开请求
+                    await this.checkCameraOn(config);
+                    this.camera.active = config;
+                }
+            }
+        } 
+
+        this.camera.checking = false;
+    }
+
+
+
+    private async checkCameraOff() {
         const camera = this.camera;
 
-        if(camera.config) {
-            if(camera.config.view && camera.stream) {
-                if(camera.config.view.srcObject === null) {
-                    camera.config.view.srcObject = camera.stream;
-                }
+        // 关掉预览
+        if (camera.active) {
+            if(camera.active.view) {
+                console.log("disable preview camera");
+                camera.active.view.srcObject = null;
+            }
+            camera.active = undefined;
+        }
+
+        // 关闭摄像头
+        if (camera.stream) {
+            camera.stream.getTracks().forEach(track => track.stop());
+            camera.stream = undefined;
+            console.log("closed camera");
+        }
+
+        // 取消发布
+        if (camera.producer ) {
+
+            const producerId = camera.producer.id;
+
+            if (this.roomConfig && this.client) {
+                console.log("unpublish camera (reason: close) ...")
+                // TODO: 捕获异常并处理
+                const rsp = await this.client.unpublish(this.roomConfig?.roomId, producerId);
+                console.log("unpublished camera (reason: close)", producerId, rsp);
+            } else {
+                console.log("ignore unpublish camera, client", this.client, "roomConfig", this.roomConfig)
+            }
+            
+            camera.producer.close();
+            camera.producer = undefined;
+            console.log("closed camera producer (reason: close)", producerId);
+        }
+    }
+
+
+
+    private async checkCameraOn(config: LocalCameraConfig) {
+        const camera = this.camera;
+
+        if(camera.stream) {
+            // TODO: 检查摄像头参数 constraints 参数不一致时重现打开摄像头
+        }
+
+        // 打开摄像头
+        if(!camera.stream) {
+            const video = config.constraints || true;
+            console.log("opening camera, constraints", video);
+            this.camera.stream = await navigator.mediaDevices.getUserMedia({ video });
+            // this.camera.stream = await navigator.mediaDevices.getUserMedia({
+            //     video : {
+            //         width : {
+            //             ideal : 1280
+            //         },
+            //         height : {
+            //             ideal : 720
+            //         },
+            //         frameRate : {
+            //             ideal : 60
+            //         }
+            //     }
+            // });
+            console.log("opened camera");
+        }
+
+        // 开启预览
+        if(config.view && camera.stream) {
+            if(config.view.srcObject === null) {
+                console.log("enable preview camera");
+                config.view.srcObject = camera.stream;
             }
         }
 
-        if (!camera.stream) {
-            if (camera.producer && this.roomConfig) {
+        const is_pub = config.publish || true;
+
+        if (!is_pub) {
+            if (camera.producer && this.client && this.roomConfig) {
+                console.log("unpublish camera producer (reason: unpub) ...")
                 const producerId = camera.producer.id;
-                const rsp = await this.client?.unpublish(this.roomConfig?.roomId, producerId);
+                // TODO: 处理异常
+                const rsp = await this.client.unpublish(this.roomConfig?.roomId, producerId);
                 camera.producer.close();
                 camera.producer = undefined;
-                console.log("unpublished camera producer", producerId, rsp);
+                console.log("unpublished camera producer (reason: unpub)", producerId, rsp);
             }
-
-            return;
-        }
-
-        if (!camera.config) {
-            return;
-        }
-
-        if (!camera.config.publish) {
-            if (!camera.producer) {
-                return;
-            }
-            // TODO: unpub
         } else {
-            if (camera.producer || !camera.stream) {
-                return;
-            }
 
-            if (!this.producerTransport || !this.device) {
-                return;
-            }
-
-            const track = camera.stream.getVideoTracks()[0];
-            const codec = this.device.rtpCapabilities.codecs?.find((codec) => codec.mimeType.toLowerCase() === 'video/vp8')
-            let encodings;
-            if (camera.config.small) {
-                encodings = [
-                    {scaleResolutionDownBy: 4, maxBitrate: 500000},
-                    // {scaleResolutionDownBy: 2, maxBitrate: 1000000},
-                    {scaleResolutionDownBy: 1, maxBitrate: 5000000}
-                ];
-            }
-
-            let appData: ProducerAppData = {
-                info: {
-                    // mediaTag: 'camera',
-                    stype: StreamType.Camera,
-                    streamId: 'video_stream',
+            if (!camera.producer && camera.stream && this.producerTransport && this.device) {
+                const track = camera.stream.getVideoTracks()[0];
+                const codec = this.device.rtpCapabilities.codecs?.find((codec) => codec.mimeType.toLowerCase() === 'video/vp8')
+                let encodings;
+                if (config.small) {
+                    encodings = [
+                        {scaleResolutionDownBy: 4, maxBitrate: 500000},
+                        // {scaleResolutionDownBy: 2, maxBitrate: 1000000},
+                        {scaleResolutionDownBy: 1, maxBitrate: 5000000}
+                    ];
                 }
-            };
 
-            camera.producer = await this.producerTransport.produce({ 
-                track,
-                codec,
-                encodings,
-                appData,
-                // appData: { mediaTag: 'camera' },
-            });
+                let appData: ProducerAppData = {
+                    info: {
+                        // mediaTag: 'camera',
+                        stype: StreamType.Camera,
+                        streamId: 'video_stream',
+                    }
+                };
 
-            console.log("produced camera", camera.producer);
+                camera.producer = await this.producerTransport.produce({ 
+                    track,
+                    codec,
+                    encodings,
+                    appData,
+                    // appData: { mediaTag: 'camera' },
+                });
+
+                console.log("produced camera", camera.producer);
+            }
         }
     }
 
     private async checkMic() {
+        if (this.mic.checking) {
+            return;
+        }
+
+        this.mic.checking = true;
+
+        while(this.mic.updated) {
+            console.log("check mic updated", this.mic.updated);
+            this.mic.updated = undefined;
+            // await this.checkCameraOnce();
+
+            {
+                const config = this.mic.config;
+                
+                if (!config) {
+                    // 处理关闭请求
+                    await this.checkMicOff();
+                    this.mic.active = undefined;
+                } else {
+                    // 处理打开请求
+                    await this.checkMicOn(config);
+                    this.mic.active = config;
+                }
+            }
+        } 
+
+        this.mic.checking = false;
+    }
+
+    private async checkMicOff() {
         const mic = this.mic;
 
-        const muted = mic.muted ?? true;             // 默认关闭麦克风
-        const serverMuted = mic.serverMuted ?? true; // 默认关闭麦克风
+        // 关闭麦克风
+        if (mic.stream) {
+            mic.stream.getTracks().forEach(track => track.stop());
+            mic.stream = undefined;
+            console.log("closed mic");
+        }
 
+        // 取消发布
+        if (mic.producer ) {
+
+            const producerId = mic.producer.id;
+
+            if (this.roomConfig && this.client) {
+                console.log("unpublish mic (reason: close) ...")
+                // TODO: 捕获异常并处理
+                const rsp = await this.client.unpublish(this.roomConfig?.roomId, producerId);
+                console.log("unpublished mic (reason: close)", producerId, rsp);
+            } else {
+                console.log("ignore unpublish mic, client", this.client, "roomConfig", this.roomConfig)
+            }
+            
+            mic.producer.close();
+            mic.producer = undefined;
+            console.log("closed mic producer (reason: close)", producerId);
+        }
+    }
+
+    private async checkMicOn(config: MicConfig) {
+        const mic = this.mic;
+        const serverMuted = mic.serverMuted ?? false;
+        const muted = mic.muted ?? false;             // 默认开启麦克风
+        
+
+        if(mic.stream) {
+            // TODO: 检查参数 constraints 参数不一致时重现打开设备
+        }
+
+        // 打开设备
         if(!mic.stream) {
-            if (!muted) {
-                const config = mic.config;
+            if(!muted) {
+                const audio = config.constraints !== undefined? config.constraints : true;
+
+                console.log("opening mic, constraints", audio);
                 this.mic.stream = await navigator.mediaDevices.getUserMedia({
-                    audio: config && config.constraints !== undefined? config.constraints : true
-                    // audio: {
-                    //     echoCancellation: false // TODO: 正式代码要开启回音消除
-                    // },
+                    audio
                 });
                 console.log("opened mic");
             }
         }
 
-        if (!mic.stream) {
-            return;
-        }
+        const is_pub = config.publish || true;
 
-        if (mic.producer && this.roomConfig) {
-            if (muted != serverMuted) {
-                const producerId = mic.producer.id;
-                const rsp = await this.client?.mute(this.roomConfig?.roomId, producerId, muted);
-                if (muted) {
+        if (!is_pub) {
+            if(mic.producer) {
+                if(!mic.producer.paused) {
+                    console.log("pause mic producer (reason: unpub)");
                     mic.producer.pause();
-                } else {
-                    mic.producer.resume();
                 }
-                
-                mic.serverMuted = muted;
-                console.log("updated mic muted", muted, producerId, rsp);
+
+                if(this.client && this.roomConfig) {
+                    console.log("unpublish mic producer (reason: unpub) ...")
+                    const producerId = mic.producer.id;
+                    // TODO: 处理异常
+                    const rsp = await this.client.unpublish(this.roomConfig?.roomId, producerId);
+                    mic.producer.close();
+                    mic.producer = undefined;
+                    console.log("unpublished mic producer (reason: unpub)", producerId, rsp);
+                }
             }
 
-            return;
-        }
-
-        if (mic.muted) {
-            if (!this.roomConfig) {
-                mic.stream.getTracks().forEach(track => track.stop());
-                mic.stream = undefined;
-                console.log("closed mic");
-                return;
-            }
-        }
-
-        const pub = mic.config?.publish ?? true;
-
-        if (!pub) {
-            if (!mic.producerId) {
-                return;
-            }
-            // TODO: unpub
         } else {
-            if (mic.producerId || !mic.stream) {
-                return;
+
+            if (!mic.producer && mic.stream && this.producerTransport && this.device) {
+                const track = mic.stream.getAudioTracks()[0];
+
+                let appData: ProducerAppData = {
+                    info: {
+                        // mediaTag: 'mic',
+                        stype: StreamType.Mic,
+                        streamId: 'audio_stream',
+                    }
+                };
+
+                console.log("produce mic ..."); 
+                mic.producer = await this.producerTransport.produce({ track, appData });
+                console.log("produce mic done"); 
+                mic.serverMuted = false; // TODO: 赋值发布时的 mute
+                console.log("produced mic", mic.producer);
             }
 
-            if (!this.producerTransport) {
-                return;
-            }
-
-            const track = mic.stream.getAudioTracks()[0];
-
-            let appData: ProducerAppData = {
-                info: {
-                    // mediaTag: 'mic',
-                    stype: StreamType.Mic,
-                    streamId: 'audio_stream',
+            if (mic.producer) {
+                if (mic.producer.paused != muted) {
+                    if (muted) {
+                        console.log("pause mic producer");
+                        mic.producer.pause();
+                    } else {
+                        mic.producer.resume();
+                        console.log("resume mic producer");
+                    }
                 }
-            };
 
-
-            mic.producer = await this.producerTransport.produce({ track, appData });
-            mic.serverMuted = false; // TODO: 赋值发布时的 mute
-            console.log("produced mic", mic.producer);
+                if (muted != serverMuted && this.client && this.roomConfig) {
+                    const producerId = mic.producer.id;
+                    console.log("send request mic muted", muted, producerId); 
+                    const rsp = await this.client.mute(this.roomConfig?.roomId, producerId, muted);
+                    mic.serverMuted = muted;
+                    console.log("recv response mic muted", muted, producerId, rsp);
+                }
+            }
         }
     }
+
 
     public async watchRemoteCamera(config: UserVideoConfig) {
         let cell = this.users.get(config.userId);

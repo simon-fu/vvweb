@@ -23,6 +23,7 @@ interface User {
 
 class App {
 	private startButton: HTMLButtonElement;
+	private endButton: HTMLButtonElement;
 	private sendPreview: HTMLVideoElement;
 	private localCamera: HTMLInputElement;
 	private localMic: HTMLInputElement;
@@ -47,17 +48,28 @@ class App {
 		initVideo(this.sendPreview);
 
 		this.startButton = document.getElementById('button_start') as HTMLButtonElement ;
-		this.startButton.addEventListener('click', () => {
+		this.startButton.addEventListener('click', async () => {
 			if(!this.joined) {
-				this.start();
+				await this.start();
 				this.joined = true;
 				this.startButton.textContent = "离开房间"
+				console.log("button started");
 			} else {
-				this.stop();
+				await this.stop();
 				this.joined = false;
 				this.startButton.textContent = "加入房间"
+				console.log("button stopped");
 			}
 		});
+
+		this.endButton = document.getElementById('button_end') as HTMLButtonElement ;
+		this.endButton.addEventListener('click', async () => {
+			await this.vrtc.endRoom();
+			this.stop();
+			this.joined = false;
+			this.startButton.textContent = "加入房间"
+		});
+
 
 		const shareButton = document.getElementById('button_share') as HTMLButtonElement ;
 		shareButton.addEventListener('click', async () => {
@@ -91,11 +103,18 @@ class App {
 			vrtc.muteMic(!this.localMic.checked);
 		});
 
-		vrtc.setMic({
-			constraints: {
-                echoCancellation: cfgEchoCancel // TODO: 正式代码要开启回音消除
-            },
-		})
+		// vrtc.setMic({
+		// 	constraints: {
+        //         echoCancellation: cfgEchoCancel // TODO: 正式代码要开启回音消除
+        //     },
+		// })
+
+		vrtc.on(VVRTC.EVENT.CLOSED_BY_SERVER, async (obj) => {
+			console.log("on CLOSED_BY_SERVER: ", obj);
+			await this.stop();
+			this.joined = false;
+			this.startButton.textContent = "加入房间"
+		});
 
 		vrtc.on(VVRTC.EVENT.USER_JOIN, ({userId, userExt}) => {
 			console.log("on USER_JOIN: user", userId, ", ext", userExt);
@@ -372,13 +391,6 @@ class App {
 
 		const vrtc = this.vrtc;
 
-		await vrtc.joinRoom({
-			userId: inputUserName.value,
-			roomId: inputRoomName.value,
-			userExt: "this_is_user_ext",
-			watchMe: cfgWatchMe,
-		});
-
 		// 退出后又加入要重新发布
 		vrtc.muteMic(!this.localMic.checked);
 
@@ -393,6 +405,24 @@ class App {
 		} else {
 			vrtc.closeLocalCamera();
 		}
+
+		if (this.localMic.checked) {
+			vrtc.openLocalMic({
+				constraints: {
+					echoCancellation: cfgEchoCancel // TODO: 正式代码要开启回音消除
+				},
+			});
+		} else {
+			vrtc.closeLocalMic();
+		}
+
+		await vrtc.joinRoom({
+			userId: inputUserName.value,
+			roomId: inputRoomName.value,
+			userExt: "this_is_user_ext",
+			watchMe: cfgWatchMe,
+		});
+
 	}
 
 	private async stop() {
@@ -660,6 +690,8 @@ function getQueryBool(params: URLSearchParams, key: string): boolean | undefined
   return undefined; // 不可识别的值
 }
 
+window.addEventListener('error', e => console.log('window error', e));
+window.addEventListener('unhandledrejection', e => console.log('unhandled rejection', e.reason));
 
 const app = new App();
 app.run();

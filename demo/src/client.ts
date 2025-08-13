@@ -50,6 +50,7 @@ export class Client {
     private emitter: EventEmitter;
 
     private pendingRequests: Map< number, { 
+        origin: string;
         resolve: (value: any) => void; 
         reject: (reason?: any) => void;
     }>;
@@ -133,18 +134,19 @@ export class Client {
     private handleClose(event: CloseEvent) {
         console.log("WebSocket closed", event);
 
-        for (const [, { reject }] of this.pendingRequests) {
-            reject(new Error("WebSocket closed"));
+        for (const [, { reject, origin }] of this.pendingRequests) {
+            console.log("reject request, origin", origin);
+            reject(new Error("WebSocket closed [" + origin + "]"));
         }
         this.pendingRequests.clear();
     }
 
-    public async invoke(req: any): Promise<any> {
+    public async invoke(req: any, origin: string): Promise<any> {
         return new Promise((resolve, reject) => {
             const msg_id = this.msgIdCounter++;
             req.msg_id = msg_id;
             
-            this.pendingRequests.set(msg_id, { resolve, reject });
+            this.pendingRequests.set(msg_id, { resolve, reject, origin });
             this.ws.send(JSON.stringify(req));
         });
     }
@@ -184,7 +186,7 @@ export class Client {
                     user_ext,
                 },
             }
-        });
+        }, "open_session");
         // console.log("opened response:", rsp.OpenSessionResponse);
         // this.sessionId = rsp.OpenSessionResponse.session_id;
         return rsp.Open;
@@ -198,11 +200,26 @@ export class Client {
                     room_id,
                 },
             }
-        });
+        }, "close_session");
 
         this.ws.close();
 
         return rsp.Close;
+    }
+
+    public async end_room(room_id: string): Promise<any> {
+        // console.log("close session ...");
+        const rsp = await this.invoke({
+            typ: {
+                End: {
+                    room_id,
+                },
+            }
+        }, "end_room");
+
+        this.ws.close();
+
+        return rsp.End;
     }
 
     public async create_producer_transport(roomId: string): Promise<any> {
@@ -214,7 +231,7 @@ export class Client {
                     kind: 0,    // AudioVideo = 0, Audio = 1, Video = 2,
                 },
             }
-        });
+        }, "create_producer_transport");
         return rsp.CreateX;
     }
 
@@ -227,7 +244,7 @@ export class Client {
                     kind: 0,    // AudioVideo = 0, Audio = 1, Video = 2,
                 },
             }
-        });
+        }, "create_consumer_transport");
         return rsp.CreateX;
     }
 
@@ -243,7 +260,7 @@ export class Client {
                     // }
                 },
             }
-        });
+        }, "connect_transport");
         return rsp.ConnX;
     }
 
@@ -298,7 +315,7 @@ export class Client {
                     rtp: rtpParametersTyped,
                 },
             }
-        });
+        }, "publish");
         return rsp.Pub;
 
     }
@@ -311,7 +328,7 @@ export class Client {
                     producerId,
                 },
             }
-        });
+        }, "unpublish");
         return {};
     }
 
@@ -324,7 +341,7 @@ export class Client {
                     muted,
                 },
             }
-        });
+        }, "mute");
         return {};
     }
 
@@ -342,7 +359,7 @@ export class Client {
                     } : null,
                 },
             }
-        });
+        }, "subscribe");
 
         return rsp.Sub;
     }
@@ -355,7 +372,7 @@ export class Client {
                     consumerId,
                 },
             }
-        });
+        }, "unsubscribe");
 
         return rsp.USub;
     }
@@ -372,7 +389,7 @@ export class Client {
                     } : null,
                 },
             }
-        });
+        }, "updateConsumeVideoLayer");
 
         return rsp.Layer;
     }
