@@ -82,12 +82,11 @@ class App {
 			console.log("click local camera", this.localCamera.checked);
 
 			if (this.localCamera.checked) {
-				const localSmall = document.getElementById('local-small') as HTMLInputElement ;
 
 				vrtc.openLocalCamera({
 					view: this.sendPreview,
 					publish: true,
-					small: localSmall.checked,
+					small: inputLocalSmall.checked,
 				});
 			} else {
 				vrtc.closeLocalCamera();
@@ -395,12 +394,11 @@ class App {
 		vrtc.muteMic(!this.localMic.checked);
 
 		if (this.localCamera.checked) {
-			const localSmall = document.getElementById('local-small') as HTMLInputElement ;
 
 			vrtc.openLocalCamera({
 				view: this.sendPreview,
 				publish: true,
-				small: localSmall.checked,
+				small: inputLocalSmall.checked,
 			});
 		} else {
 			vrtc.closeLocalCamera();
@@ -660,6 +658,9 @@ if (inputUserName) {
 
 const inputTalking = document.getElementById('input_talking') as HTMLInputElement;
 
+const inputLocalSmall = document.getElementById('local-small') as HTMLInputElement ;
+inputLocalSmall.checked = getQueryBool(urlParams, "small") ?? true;
+
 const localVolume = document.getElementById('local-volume') as HTMLLabelElement ;
 
 const cfgWatchMe = getQueryBool(urlParams, "watchMe") ?? true;
@@ -676,6 +677,7 @@ watchMe - Enable watching myself, default true.
 mic - Enable micphone, default true.
 camera = Enable camera, default true.
 echoCancel - Enable audio echo cancellation, default true.
+small - Enable small video stream, default true.
 `;
 
 
