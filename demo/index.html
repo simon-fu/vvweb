@@ -24,6 +24,8 @@
       grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
       /* gap: 10px; */
       height: 100%;
+      margin-bottom: 5px;
+      margin-top: 5px;
     }
 
     /* 每个格子项 */
@@ -61,33 +63,17 @@
 </style>
 
 <div>
-    <div>
+    <div style="margin-bottom: 5px;"">
         <button id="button_start">加入房间</button>
         <button id="button_end">关闭房间</button>
+        <button id="button_share">共享屏幕</button>
     </div>
     <hr />
-    <div style="display: flex; flex-direction: column;">
-        <div class="form-row">
-            <label for="input_url">Ws:</label>
-            <input id="input_url" type="text", style="flex: 1;">
-        </div>
-        <div class="form-row">
-            <label for="input_room">Room:</label>
-            <input id="input_room" type="text" size="32">
-        </div>
-        <div class="form-row">
-            <label for="input_user">User:</label>
-            <input id="input_user" type="text" size="32">
-        </div>
-        <div class="form-row">
-            <label for="input_talking">Talking:</label>
-            <input id="input_talking" type="text" size="32" readonly>
-        </div>
-        <div >
-            <button id="button_share">共享屏幕</button>
-        </div>
+
+    <div class="form-row">
+        <label for="input_talking">Talking:</label>
+        <input id="input_talking" type="text" size="32" readonly>
     </div>
-    <hr />
 
 
     <div class="grid_container">
@@ -100,7 +86,7 @@
             </div>
             
             <div>
-                <label>Local</label>
+                <label id="local-name">Local</label>
                 <button id="button-pub-video" hidden>video</button>
             </div>
             <div>
@@ -135,9 +121,62 @@
     <hr />
 
     <div>
-        <h5>Query Parameters:</h5>
-        <textarea id="texta_args" readonly style="width: 100%; height: 150px; resize: vertical">I am a read-only textarea.</textarea>
+        <details>
+            <summary>Settings</summary>
+            <div style="display: flex; flex-direction: column;">
+                <div class="form-row">
+                    <label for="input_url">Ws:</label>
+                    <input id="input_url" type="text", style="flex: 1;">
+                </div>
+                <div class="form-row">
+                    <label for="input_room">Room:</label>
+                    <input id="input_room" type="text" size="32">
+                </div>
+                <div class="form-row">
+                    <label for="input_user">User:</label>
+                    <input id="input_user" type="text" size="32">
+                </div>
+            </div>
+
+            <div style="margin-left: 1.5em;">
+                <details>
+                    <summary>Parameters</summary>
+
+                    <div>
+                        <textarea id="texta_args" readonly style="width: 100%; height: 150px; resize: vertical">I am a read-only textarea.</textarea>
+                    </div>
+                </details>
+            </div>
+
+            <div style="margin-left: 1.5em;">
+                <details id="devicesDetails">
+                    <summary>Devices</summary>
+
+                    <div>
+                        <label for="videoSource">Video source: </label>
+                        <select id="videoSource"></select>
+                    </div>
+
+                    <div>
+                        <label for="audioSource">Audio source: </label>
+                        <select id="audioSource"></select>
+                    </div>
+
+                    <div hidden>
+                        <label for="audioOutput">Audio output: </label>
+                        <select id="audioOutput"></select>
+                    </div>
+
+                </details>
+
+            </div>
+        </details>
     </div>
+
+    <div id="log_container" style="height: 230px; border: 1px solid dimgray;">
+
+    </div>
+
 </div>
 
 

@@ -1,6 +1,7 @@
 /* eslint-disable no-console */
 
 import { VideoType, VVRTC } from './vvrtc';
+import { LogViewer } from "./log_viewer";
 
 interface UserGrid {
 	video: HTMLVideoElement;
@@ -64,7 +65,11 @@ class App {
 
 		this.endButton = document.getElementById('button_end') as HTMLButtonElement ;
 		this.endButton.addEventListener('click', async () => {
-			await this.vrtc.endRoom();
+			const updated = await this.vrtc.endRoom();
+			if(updated) {
+				logViewer.info("end room");
+			}
+
 			this.stop();
 			this.joined = false;
 			this.startButton.textContent = "加入房间"
@@ -81,16 +86,16 @@ class App {
 		this.localCamera.addEventListener('click', () => {
 			console.log("click local camera", this.localCamera.checked);
 
-			if (this.localCamera.checked) {
+			// if (this.localCamera.checked) {
 
-				vrtc.openLocalCamera({
-					view: this.sendPreview,
-					publish: true,
-					small: inputLocalSmall.checked,
-				});
-			} else {
-				vrtc.closeLocalCamera();
-			}
+			// 	vrtc.openLocalCamera({
+			// 		view: this.sendPreview,
+			// 		small: inputLocalSmall.checked,
+			// 		constraints: {deviceId: videoSourceSelect.value ? {exact: videoSourceSelect.value} : undefined},
+			// 	});
+			// } else {
+			// 	vrtc.closeLocalCamera();
+			// }
 	
 		});
 
@@ -110,6 +115,7 @@ class App {
 
 		vrtc.on(VVRTC.EVENT.CLOSED_BY_SERVER, async (obj) => {
 			console.log("on CLOSED_BY_SERVER: ", obj);
+			logViewer.error(`closed by server. status [${obj.code}-${obj.reason}]`);
 			await this.stop();
 			this.joined = false;
 			this.startButton.textContent = "加入房间"
@@ -387,6 +393,8 @@ class App {
 	}
 
 	private async start() {
+		const roomId = inputRoomName.value;
+		logViewer.info(`Join room (${roomId})...`);
 
 		const vrtc = this.vrtc;
 
@@ -397,8 +405,8 @@ class App {
 
 			vrtc.openLocalCamera({
 				view: this.sendPreview,
-				publish: true,
 				small: inputLocalSmall.checked,
+				constraints: {deviceId: videoSourceSelect.value ? {exact: videoSourceSelect.value} : undefined},
 			});
 		} else {
 			vrtc.closeLocalCamera();
@@ -407,7 +415,8 @@ class App {
 		if (this.localMic.checked) {
 			vrtc.openLocalMic({
 				constraints: {
-					echoCancellation: cfgEchoCancel // TODO: 正式代码要开启回音消除
+					echoCancellation: cfgEchoCancel, // TODO: 正式代码要开启回音消除
+					deviceId: audioSourceSelect.value ? {exact: audioSourceSelect.value} : undefined
 				},
 			});
 		} else {
@@ -416,15 +425,20 @@ class App {
 
 		await vrtc.joinRoom({
 			userId: inputUserName.value,
-			roomId: inputRoomName.value,
+			roomId,
 			userExt: "this_is_user_ext",
 			watchMe: cfgWatchMe,
 		});
 
+		logViewer.info("Joined room");
 	}
 
 	private async stop() {
-		await this.vrtc.leaveRoom();
+		const updated = await this.vrtc.leaveRoom();
+		if(updated) {
+			logViewer.info("leaved room");
+		}
+
 		await this.clean();
 	}
 
@@ -663,6 +677,20 @@ inputLocalSmall.checked = getQueryBool(urlParams, "small") ?? true;
 
 const localVolume = document.getElementById('local-volume') as HTMLLabelElement ;
 
+const videoSourceSelect = document.getElementById('videoSource') as HTMLSelectElement;
+const audioSourceSelect = document.getElementById('audioSource') as HTMLSelectElement;
+const audioOutputSelect = document.getElementById('audioOutput') as HTMLSelectElement;
+
+const localNameLabel = document.getElementById('local-name') as HTMLLabelElement;
+localNameLabel.textContent = 'Me (' + inputUserName.value + ')'; 
+
+const logViewer = new LogViewer("log_container", {
+	filterLinesOnSearch: true,
+	showTimestamp: true,
+	height: "230px",
+});
+
+
 const cfgWatchMe = getQueryBool(urlParams, "watchMe") ?? true;
 const cfgMicOn = getQueryBool(urlParams, "mic") ?? true;
 const cfgCameraOn = getQueryBool(urlParams, "camera") ?? true; 
@@ -695,6 +723,96 @@ function getQueryBool(params: URLSearchParams, key: string): boolean | undefined
 window.addEventListener('error', e => console.log('window error', e));
 window.addEventListener('unhandledrejection', e => console.log('unhandled rejection', e.reason));
 
-const app = new App();
-app.run();
+
+
+
+async function getDeviceList(): Promise<MediaDeviceInfo[]> {
+	if (!navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) {
+		throw new Error('浏览器不支持 mediaDevices.enumerateDevices');
+	}
+
+	// 尝试请求媒体权限以便获取 device.label（如果用户拒绝则继续返回列表但 label 可能为空）
+	try {
+		// 只请求音频许可通常就能解锁大多数设备的 label；如果也需要摄像头名，同时请求 video: true
+		// 你可以在这里改成 { audio: true } 或 { video: true } 按需
+		const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: true });
+		// 立即停止获取到的流，避免占用设备
+		stream.getTracks().forEach(t => t.stop());
+	} catch (err) {
+		// 用户可能拒绝权限；这不是致命错误，但 label 可能为空
+		console.warn('getUserMedia 访问被拒绝或失败，设备 label 可能为空', err);
+	}
+
+	const devices = await navigator.mediaDevices.enumerateDevices();
+	return devices;
+}
+
+
+function initSelect(select: HTMLSelectElement, devices: MediaDeviceInfo[]) {
+	select.innerHTML = '';
+	for (const device of devices) {
+		const option = document.createElement('option');
+		option.value = device.deviceId;
+		// 如果 label 为空则显示 kind + deviceId 的前短串作为占位
+		option.text = device.label || `${device.kind} (${device.deviceId.slice(0, 8)})`;
+		select.appendChild(option);
+	}
+}
+
+async function initDeviceList() {
+	
+	try {
+		const devices = await getDeviceList();
+		console.log('全部设备:', devices);
+
+		// const { audioInputs, audioOutputs, videoInputs } = separateDevices(devices);
+		const { audioInputs, audioOutputs, videoInputs } = {
+			audioInputs: devices.filter(d => d.kind === 'audioinput'),
+			audioOutputs: devices.filter(d => d.kind === 'audiooutput'),
+			videoInputs: devices.filter(d => d.kind === 'videoinput'),
+		};
+
+		console.log('麦克风:', audioInputs);
+		console.log('扬声器:', audioOutputs);
+		console.log('摄像头:', videoInputs);
+
+		initSelect(videoSourceSelect, videoInputs);
+		initSelect(audioSourceSelect, audioInputs);
+		initSelect(audioOutputSelect, audioOutputs);
+
+	} catch (err) {
+		console.error('获取设备列表失败:', err);
+	}
+}
+
+let enableDevices = false;
+document.addEventListener('DOMContentLoaded', () => {
+	{
+		const details = document.getElementById('devicesDetails') as HTMLDetailsElement;
+		details.addEventListener('toggle', () => {
+			if (details.open) {
+				if(!enableDevices) {
+					enableDevices = true;
+					initDeviceList();
+				}
+			} 
+		});
+	}
+
+	// 当系统插拔设备时自动更新
+	if (navigator.mediaDevices && 'ondevicechange' in navigator.mediaDevices) {
+		navigator.mediaDevices.addEventListener('devicechange', () => {
+			if(enableDevices) {
+				console.log('设备发生变化，重新获取列表');
+				initDeviceList();
+			}
+		});
+	}
+
+	const app = new App();
+	app.run();
+});
+
+
+
 

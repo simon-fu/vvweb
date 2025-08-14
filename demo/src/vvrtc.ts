@@ -1016,26 +1016,29 @@ export class VVRTC {
 
     }
 
-    public async leaveRoom(): Promise<void> {
+    public async leaveRoom(): Promise<boolean> {
         if(!this.client || !this.roomConfig) {
-            return;
+            return false;
         }
 
         const rsp = await this.client.close_session(this.roomConfig.roomId);
         console.log("closed session response", rsp);   
 
         await this.cleanUp();
+
+        return true;
     }
 
-    public async endRoom(): Promise<void> {
+    public async endRoom(): Promise<boolean> {
         if(!this.client || !this.roomConfig) {
-            return;
+            return false;
         }
 
         const rsp = await this.client.end_room(this.roomConfig.roomId);
         console.log("end room response", rsp);   
 
         await this.cleanUp();
+        return true;
     }
 
     private async cleanUp() {
