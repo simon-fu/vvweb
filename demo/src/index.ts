@@ -86,16 +86,16 @@ class App {
 		this.localCamera.addEventListener('click', () => {
 			console.log("click local camera", this.localCamera.checked);
 
-			// if (this.localCamera.checked) {
+			if (this.localCamera.checked) {
 
-			// 	vrtc.openLocalCamera({
-			// 		view: this.sendPreview,
-			// 		small: inputLocalSmall.checked,
-			// 		constraints: {deviceId: videoSourceSelect.value ? {exact: videoSourceSelect.value} : undefined},
-			// 	});
-			// } else {
-			// 	vrtc.closeLocalCamera();
-			// }
+				vrtc.openLocalCamera({
+					view: this.sendPreview,
+					small: inputLocalSmall.checked,
+					constraints: {deviceId: videoSourceSelect.value ? {exact: videoSourceSelect.value} : undefined},
+				});
+			} else {
+				vrtc.closeLocalCamera();
+			}
 	
 		});
 
@@ -436,7 +436,7 @@ class App {
 	private async stop() {
 		const updated = await this.vrtc.leaveRoom();
 		if(updated) {
-			logViewer.info("leaved room");
+			logViewer.info("Leaved room");
 		}
 
 		await this.clean();
