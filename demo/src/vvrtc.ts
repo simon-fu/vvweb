@@ -1261,6 +1261,14 @@ export class VVRTC {
         await this.checkMic();
     }
 
+    public isOpenMic() : boolean {
+        if(this.mic.config) {
+            return true;
+        } else {
+            return false;
+        }
+    }
+
     // 默认 muted = true，即不打开麦克风
     // 若加入房间前，设置 muted = true 会打开麦克风，设置 muted = false 会关闭麦克风  
     // 若加入房间后，第一次设置 muted = false 时打开麦克风，然后设置 muted = true，不会关闭麦克风，只是本地静音且服务器不转发音频数据。

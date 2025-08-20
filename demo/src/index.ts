@@ -105,6 +105,21 @@ class App {
 			console.log("click local mic", this.localMic.checked);
 
 			vrtc.muteMic(!this.localMic.checked);
+
+			if(this.localMic.checked) {
+				if(!vrtc.isOpenMic()) {
+					vrtc.openLocalMic({
+						constraints: {
+							echoCancellation: cfgEchoCancel, // TODO: 正式代码要开启回音消除
+							deviceId: audioSourceSelect.value ? {exact: audioSourceSelect.value} : undefined
+						},
+					});
+				}
+			} else {
+				if(!this.joined) {
+					vrtc.closeLocalMic();
+				}
+			}
 		});
 
 		// vrtc.setMic({
