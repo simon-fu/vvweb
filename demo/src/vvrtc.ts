@@ -1790,7 +1790,17 @@ export class VVRTC {
     
             cell.video.track = track;
 
-            checkVideoSource(cell.video.track.consumer.track, cell.video.view);
+            const ok = checkVideoSource(cell.video.track.consumer.track, cell.video.view);
+            console.log("checkVideoSource consumer id", track.consumer.id, ", user id", cell.user.id, ", ok", ok);
+
+            if (cell.video.view) {
+                cell.video.view.onloadedmetadata = () => console.log("metadata loaded, user id", cell.user.id);
+                cell.video.view.oncanplay = () => console.log("can play, user id", cell.user.id);
+            }
+
+            if(cell.video.track.consumer.track) {
+                console.log("dump video track", cell.video.track.consumer.track, ", user id", cell.user.id);
+            }
         }
     }
 
@@ -2113,6 +2123,8 @@ function checkVideoSource(media?: MediaStreamTrack, view?: HTMLVideoElement): Bo
         const combinedStream = new MediaStream();
         combinedStream.addTrack(media);
         view.srcObject = combinedStream;
+        view.autoplay = true;
+        view.playsInline = true;
         // console.log("assign video source", media);
         return true;
     } 
