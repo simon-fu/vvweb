@@ -28,6 +28,7 @@ export interface User {
 	online: boolean;
 	streams: { [key: string]: Stream };
     ext?: string;
+    inst_id?: string;
     // streams: Map<string, Stream>;
 }
 

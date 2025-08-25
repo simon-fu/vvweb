@@ -1910,6 +1910,15 @@ export class VVRTC {
 
 
         let cell = this.users.get(newUser.id);
+        
+        if(cell) {
+            // 同一个用户， 不同的实例
+            if(newUser.inst_id !== cell.user.inst_id) {
+                this.triggerUserLeave(cell);
+                cell = undefined;
+            }
+        }
+
         if(!cell) {
             if(!newUser.online) {
                 return;
@@ -1942,13 +1951,15 @@ export class VVRTC {
 
         if(!newUser.online) {
 
-            this.users.delete(newUser.id);
+            // this.users.delete(newUser.id);
 
-            this.cleanUser(cell);
+            // this.cleanUser(cell);
 
-            this.trigger(VVRTC.EVENT.USER_LEAVE, {
-                userId: newUser.id,
-            });
+            // this.trigger(VVRTC.EVENT.USER_LEAVE, {
+            //     userId: newUser.id,
+            // });
+
+            this.triggerUserLeave(cell);
 
             return ;
         }
@@ -2053,6 +2064,16 @@ export class VVRTC {
                     }
                 }
             }
+        });
+    }
+
+    private triggerUserLeave(cell: UserCell) {
+        this.users.delete(cell.user.id);
+
+        this.cleanUser(cell);
+
+        this.trigger(VVRTC.EVENT.USER_LEAVE, {
+            userId: cell.user.id,
         });
     }
 
