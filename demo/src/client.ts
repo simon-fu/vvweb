@@ -265,7 +265,7 @@ export class Client {
         return rsp.ConnX;
     }
 
-    public async publish(roomId: string, transportId: string, streamId: string, stype: number, rtpParametersTyped: RtpParameters): Promise<any> {
+    public async publish(roomId: string, transportId: string, streamId: string, stype: number, rtpParametersTyped: RtpParameters, muted?: boolean): Promise<any> {
         // const codecs = rtpParametersTyped.codecs;
         // const encodings = rtpParametersTyped.encodings;
         // const rtpParameters: any = rtpParametersTyped;
@@ -314,6 +314,7 @@ export class Client {
                     // rtpParameters,
                     audioType: 0, // RoutableAudio = 0, ExclusiveAudio = 1, PriorityRoomAudio = 2,
                     rtp: rtpParametersTyped,
+                    muted,
                 },
             }
         }, "publish");

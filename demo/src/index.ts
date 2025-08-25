@@ -428,12 +428,17 @@ class App {
 		}
 
 		if (this.localMic.checked) {
-			vrtc.openLocalMic({
-				constraints: {
-					echoCancellation: cfgEchoCancel, // TODO: 正式代码要开启回音消除
-					deviceId: audioSourceSelect.value ? {exact: audioSourceSelect.value} : undefined
-				},
-			});
+			if(!vrtc.isOpenMic()) {
+				vrtc.openLocalMic({
+					constraints: {
+						echoCancellation: cfgEchoCancel, // TODO: 正式代码要开启回音消除
+						deviceId: audioSourceSelect.value ? {exact: audioSourceSelect.value} : undefined
+					},
+				});
+			}
+			
+			// 测试发布音频的同时静音
+			// vrtc.muteMic(true);
 		} else {
 			vrtc.closeLocalMic();
 		}

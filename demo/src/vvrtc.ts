@@ -318,6 +318,7 @@ interface ProducerInfo {
     // mediaTag: 'camera' | 'screen' | 'mic';
     stype: StreamType;
     streamId: string;
+    muted?: boolean;
 }
 
 export class VVRTC {
@@ -1141,7 +1142,7 @@ export class VVRTC {
 
 
                     if (this.client && this.roomConfig && this.producerTransportId) {
-                        const rsp = await this.client.publish(this.roomConfig.roomId, this.producerTransportId, stream_id, info.stype, rtpParameters);
+                        const rsp = await this.client.publish(this.roomConfig.roomId, this.producerTransportId, stream_id, info.stype, rtpParameters, info.muted);
                         // appData.stream_id = stream_id;
                         console.log("published stream", stream_id, "transport", this.producerTransportId, rsp);
                         success({ id: rsp.producerId });
@@ -1422,6 +1423,7 @@ export class VVRTC {
                         // mediaTag: 'camera',
                         stype: StreamType.Camera,
                         streamId: 'video_stream',
+                        // muted: false,
                     }
                 };
 
@@ -1514,7 +1516,8 @@ export class VVRTC {
 
         // 打开设备
         if(!mic.stream) {
-            if(!muted) {
+            // 只要有 config ， 就打开麦克风，不判断 muted
+            // if(!muted) {
                 const audio = config.constraints !== undefined? config.constraints : true;
 
                 console.log("opening mic, constraints", audio);
@@ -1522,7 +1525,7 @@ export class VVRTC {
                     audio
                 });
                 console.log("opened mic");
-            }
+            // }
         }
 
         const is_pub = config.publish || true;
@@ -1555,6 +1558,7 @@ export class VVRTC {
                         // mediaTag: 'mic',
                         stype: StreamType.Mic,
                         streamId: 'audio_stream',
+                        muted,
                     }
                 };
 
@@ -1697,6 +1701,7 @@ export class VVRTC {
                 // mediaTag: 'screen',
                 stype: StreamType.Screen,
                 streamId: 'screen_stream',
+                // muted: false,
             }
         };
 
