@@ -10,7 +10,7 @@
   },
   "author": "Simon <simon@ttstream.com>",
   "dependencies": {
-    "mediasoup-client": "^3.6.51"
+    "mediasoup-client": "^3.15.2"
   },
   "devDependencies": {
     "ts-loader": "^9.2.8",
