@@ -79,6 +79,7 @@ export interface UserVolume {
 export const VVRTCEvent = {
     USER_JOIN: 'user-join',
     USER_LEAVE: 'user-leave',
+    USER_EXT_CHANGED: 'user-ext-changed',
     USER_CAMERA_ON: 'user-video-on',
     USER_CAMERA_OFF: 'user-video-off',
     USER_MIC_ON: 'user-audio-on',
@@ -100,6 +101,10 @@ export declare interface VVRTCEventTypes {
 	}];
 	[VVRTCEvent.USER_LEAVE]: [{
 		userId: string;
+	}];
+    [VVRTCEvent.USER_EXT_CHANGED]: [{
+		userId: string;
+        userExt?: string;
 	}];
     [VVRTCEvent.USER_CAMERA_ON]: [{
 		userId: string;
@@ -1662,6 +1667,23 @@ export class VVRTC {
         }
     }
 
+    public async updateUserExt(ext?: string) {
+
+        if(!this.roomConfig) {
+            return;
+        }
+
+        this.roomConfig.userExt = ext;
+
+        if (!this.client) {
+            return;
+        }
+
+        await this.client.updateUserExt(ext);
+
+        return;
+    }
+
     public async startLocalShareScreen() {
         if (!this.client || !this.roomConfig) {
             return undefined;
@@ -1970,6 +1992,13 @@ export class VVRTC {
         }
 
         cell.user = newUser;
+
+        if(oldUser.ext !== newUser.ext) {
+            this.trigger(VVRTC.EVENT.USER_EXT_CHANGED, {
+                userId: newUser.id,
+                userExt: newUser.ext,
+            });
+        }
 
         Object.keys(oldUser.streams).forEach(streamId => {
             if (!newUser.streams.hasOwnProperty(streamId)) {

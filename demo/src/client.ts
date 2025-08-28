@@ -379,7 +379,7 @@ export class Client {
         return rsp.USub;
     }
 
-    public async updateConsumeVideoLayer(roomId: string, consumerId: string, small?: boolean) {
+    public async updateConsumeVideoLayer(roomId: string, consumerId: string, small?: boolean) : Promise<any>  {
         const rsp = await this.invoke({
             typ: {
                 Layer: {
@@ -394,6 +394,18 @@ export class Client {
         }, "updateConsumeVideoLayer");
 
         return rsp.Layer;
+    }
+
+    public async updateUserExt(ext?: string) : Promise<any> {
+        const rsp = await this.invoke({
+            typ: {
+                UpExt: {
+                    ext, 
+                },
+            }
+        }, "updateUserExt");
+
+        return rsp.UpExt;
     }
 }
 

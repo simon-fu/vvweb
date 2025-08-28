@@ -14,6 +14,7 @@ interface UserGrid {
 	labelSmall: HTMLLabelElement;
 	labelVolume: HTMLLabelElement;
 	overlay: HTMLDivElement;
+	labelName: HTMLLabelElement;
 	// layerSelect: HTMLSelectElement; 
 }
 
@@ -33,6 +34,7 @@ class App {
 	private grids: Map<string, UserGrid>;
 	private users: Map<string, User>;
 	private joined: boolean;
+	private userExt?: string;
 
 	public constructor() {
 		this.grids = new Map;
@@ -75,6 +77,24 @@ class App {
 			this.startButton.textContent = "加入房间"
 		});
 
+		textDialog.addEventListener('close', () => {
+			if (textDialog.returnValue === 'ok') {
+				const value = dialogInputText.value;
+				if (value) {
+					console.log("用户输入:", value);
+					makeLabelMyUsername(inputUserName.value, value);
+					this.userExt = value;
+					this.vrtc.updateUserExt(value);
+				}
+			}
+		});
+
+		localNameLabel.ondblclick = () => {
+			dialogInputText.value = '';
+			dialogInputText.placeholder = 'User ext'
+			textDialog.showModal();
+			dialogInputText.focus();
+		};
 
 		const shareButton = document.getElementById('button_share') as HTMLButtonElement ;
 		shareButton.addEventListener('click', async () => {
@@ -151,6 +171,11 @@ class App {
 			this.grids.set(gridId, grid);
 			user.grids.push(gridId);
 
+			makeLabelUsername(grid.labelName, userId, userExt);
+			if(userId === inputUserName.value) {
+				grid.labelName.style.color = 'red';
+			}
+
 			initVideo(grid.video);
 			
 			grid.stateVideo.addEventListener('click', () => {
@@ -202,6 +227,17 @@ class App {
 				}
 			});
 
+		});
+
+		vrtc.on(VVRTC.EVENT.USER_EXT_CHANGED, ({userId, userExt}) => {
+			console.log("on USER_EXT_CHANGED: user", userId, "ext", userExt);
+			const grid = this.grids.get(userId)
+			
+			if (!grid) {
+				return;
+			}
+
+			makeLabelUsername(grid.labelName, userId, userExt);
 		});
 
 		vrtc.on(VVRTC.EVENT.USER_CAMERA_ON, ({userId}) => {
@@ -446,7 +482,7 @@ class App {
 		await vrtc.joinRoom({
 			userId: inputUserName.value,
 			roomId,
-			userExt: "this_is_user_ext",
+			userExt: this.userExt, // "this_is_user_ext",
 			watchMe: cfgWatchMe,
 		});
 
@@ -610,9 +646,9 @@ function addUserGrid(id: string): UserGrid {
 	// 创建包含按钮的容器和按钮元素
 	const buttonContainer = document.createElement('div');
 	
-	const nameLabel = document.createElement('label');
-	nameLabel.textContent = id;
-	buttonContainer.appendChild(nameLabel);
+	const labelName = document.createElement('label');
+	labelName.textContent = id;
+	buttonContainer.appendChild(labelName);
 
 	const button = document.createElement('button');
 	button.textContent = '订阅视频';
@@ -644,6 +680,7 @@ function addUserGrid(id: string): UserGrid {
 		labelSmall,
 		labelVolume,
 		overlay,
+		labelName,
 		// layerSelect,
 	};
 }
@@ -702,7 +739,29 @@ const audioSourceSelect = document.getElementById('audioSource') as HTMLSelectEl
 const audioOutputSelect = document.getElementById('audioOutput') as HTMLSelectElement;
 
 const localNameLabel = document.getElementById('local-name') as HTMLLabelElement;
-localNameLabel.textContent = 'Me (' + inputUserName.value + ')'; 
+// localNameLabel.textContent = 'Me (' + inputUserName.value + ')'; 
+makeLabelMyUsername(inputUserName.value);
+
+function makeLabelMyUsername(userId: string, userExt?: string) {
+	if (userExt) {
+		localNameLabel.textContent = 'Me (' + userId + ')' + '(' + userExt + ')'; 
+	} else {
+		localNameLabel.textContent = 'Me (' + userId + ')'; 
+	}
+}
+
+function makeLabelUsername(label: HTMLLabelElement, userId: string, userExt?: string) {
+	if (userExt) {
+		label.textContent = userId + '(' +  userExt + ')';
+	} else {
+		label.textContent = userId;
+	}
+}
+
+const dialogInputText = document.getElementById('dialogInputText') as HTMLInputElement;
+const textDialog = document.getElementById('textDialog') as HTMLDialogElement;
+
+
 
 const logViewer = new LogViewer("log_container", {
 	filterLinesOnSearch: true,
