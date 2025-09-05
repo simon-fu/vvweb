@@ -20,7 +20,7 @@ export class EventEmitter {
     }
 
     // 触发事件（调用所有监听器）
-    emit<T = any>(event: string, data?: T): Boolean {
+    emit<T = any>(event: string, data?: T): boolean {
         if (this.events.has(event)) {
             this.events.get(event)!.forEach(listener => listener(data));
             return true

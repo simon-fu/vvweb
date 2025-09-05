@@ -89,10 +89,19 @@ export const VVRTCEvent = {
     STATISTICS: 'statistics',
     AUDIO_VOLUME: 'audio-volume',
     TALKING_USERS: 'talking-users',
-    CLOSED_BY_SERVER: 'closed-by-server'
+    // CLOSED_BY_SERVER: 'closed-by-server',
+    CLOSED: 'closed',
+    DISCONNECT: 'disconnect',
+    JOINED_ROOM: 'joined-room',
+    RECONN_SESSION: 'reconn-session',
     
 } as const; 
 
+export interface VVRTCStatus {
+    code: number;
+    reason: string;
+    from?: string;
+}
 
 export declare interface VVRTCEventTypes {
 	[VVRTCEvent.USER_JOIN]: [{
@@ -133,11 +142,16 @@ export declare interface VVRTCEventTypes {
     [VVRTCEvent.TALKING_USERS]: [{
         users: string[];
     }];
-    [VVRTCEvent.CLOSED_BY_SERVER]: [{
-        code: number;
-        reason: string;
+    [VVRTCEvent.CLOSED]: [VVRTCStatus];
+    [VVRTCEvent.DISCONNECT]: [{
+        event: any;
     }];
-    
+    [VVRTCEvent.RECONN_SESSION]: [{
+        conn_id: string;
+    }];
+    [VVRTCEvent.JOINED_ROOM]: [{
+        roomId: string;
+    }]
 }
 
 class VVRTCEmitter {
@@ -351,6 +365,12 @@ export class VVRTC {
 
     private userVolumes?: UserVolume[];
     private volumeEventIntervalId?: NodeJS.Timeout;
+
+    private joinPromise?: 
+    { 
+        resolve: (value: VVRTCStatus|undefined) => void; 
+        // reject: (reason?: any) => void;
+    };
 
     private constructor(options: VVRTCOptions) {
         this.url = options.url || "ws://127.0.0.1:11080/ws";
@@ -946,40 +966,9 @@ export class VVRTC {
         return vvrtc;
     }
 
-    public async joinRoom(args: JoinRoomConfig): Promise<void> {
-        if (!this.device) {
-            const device = new Device();
-            await device.load({
-                routerRtpCapabilities: ROUTER_RTP_CAPABILITIES,
-            });
-            console.log("device loaded");
-            this.device = device;
-        }
+    public async joinRoom(args: JoinRoomConfig): Promise<VVRTCStatus|undefined> {
 
-
-        // const ws = new WebSocket(this.url);
-        function connectWebSocket(url: string): Promise<WebSocket> {
-            return new Promise((resolve, reject) => {
-                const ws = new WebSocket(url);
-        
-                ws.addEventListener('open', (_event) => {
-                    resolve(ws); // 连接成功时 resolve WebSocket 对象
-                });
-        
-                ws.addEventListener('error', (error) => {
-                    reject(error); // 连接出错时 reject
-                });
-            });
-        }
-
-        const ws = await connectWebSocket(this.url);
-
-        const client = new Client(ws, args.userId);
-
-        {
-            const rsp = await client.open_session(args.roomId, args.userExt);
-            console.log("opened session response  ", rsp);    
-        }
+        const client = new Client(this.url, args.userId);
         
         this.client = client;
         this.roomConfig = args;
@@ -997,29 +986,68 @@ export class VVRTC {
         client.on("closed", async (ev: any) => {
             console.log("recv closed: ", ev); 
 
-            await this.cleanUp();
-
-            const { code, reason } = ev.status; 
-            this.trigger(VVRTC.EVENT.CLOSED_BY_SERVER, {
+            const { code, reason, from } = ev.status; 
+            const output = {
                 code,
                 reason,
+                from,
+            };
+
+            this.fireJoinResult(output);
+
+            await this.cleanUp();
+
+            this.trigger(VVRTC.EVENT.CLOSED, output);
+        });
+
+        client.on("connected", async (_ev: any) => {
+            this.checkConnected();
+        });
+
+        client.on("reconn-session", async (ev: any) => {
+            this.trigger(VVRTC.EVENT.RECONN_SESSION, {
+                conn_id: ev.conn_id,
             });
         });
 
-        setTimeout(async () => {
-            try {
-                await Promise.all([
-                    this.createProducerTransport(),
-                    this.createConsumerTransport(),
-                ]);
-            } catch(error) {
-                console.warn("create transport error", error);
-                // throw error;
+        client.on("connect-error", async (_ev: any) => {
+            console.log("recv connect-error");
+        });
+
+        client.on("disconnect", async (ev: any) => {
+            if(this.client) {
+                this.trigger(VVRTC.EVENT.DISCONNECT, {
+                    event: ev.event,
+                });
             }
+        });
 
-        }, 0);
+        const promise = new Promise<VVRTCStatus|undefined>((resolve, _reject) => {
+            if(this.client) {
+                this.joinPromise = {
+                    resolve,
+                    // reject,
+                };
+            }
+        });
 
+        return promise;
+    }
 
+    private fireJoinResult(reason?: VVRTCStatus) {
+        if(this.joinPromise) {
+            if(!reason) {
+                this.joinPromise.resolve(undefined);
+                if(this.roomConfig) {
+                    this.trigger(VVRTC.EVENT.JOINED_ROOM, {
+                        roomId: this.roomConfig.roomId,
+                    });
+                }
+            } else {
+                this.joinPromise.resolve(reason);
+                // this.joinPromise.reject(reason);
+            }
+        }
     }
 
     public async leaveRoom(): Promise<boolean> {
@@ -1047,8 +1075,52 @@ export class VVRTC {
         return true;
     }
 
+    private async checkConnected() {
+        if(!this.client || !this.roomConfig) {
+            return;
+        }
+
+        if (this.device) {
+            console.log("re-connected");
+            return;
+        }
+
+        const device = new Device();
+        await device.load({
+            routerRtpCapabilities: ROUTER_RTP_CAPABILITIES,
+        });
+        console.log("device loaded");
+        this.device = device;
+
+        {
+            const rsp = await this.client.open_session(this.roomConfig.roomId, this.roomConfig.userExt);
+            console.log("opened session response  ", rsp);
+            const status: VVRTCStatus = rsp.status ?? {code: 0, reason: ""};
+            status.from = "server";
+            this.fireJoinResult(status.code == 0 ? undefined : status);
+            if(status.code !== 0) {
+                await this.cleanUp();
+                this.trigger(VVRTC.EVENT.CLOSED, status);
+                return;
+            }
+        }
+
+        setTimeout(async () => {
+            try {
+                await Promise.all([
+                    this.createProducerTransport(),
+                    this.createConsumerTransport(),
+                ]);
+            } catch(error) {
+                console.warn("create transport error", error);
+                // throw error;
+            }
+
+        }, 0);
+    }
+
     private async cleanUp() {
-        this.users.forEach(async cell => {
+        this.users.forEach(cell => {
             this.cleanUser(cell);
         });
         this.users.clear();
@@ -1078,7 +1150,7 @@ export class VVRTC {
         this.producerTransportId = undefined;
         this.producerTransport = undefined;
         this.consumerTransport = undefined;
-
+        this.device = undefined;
     }
 
     private cleanUser(cell: UserCell) {

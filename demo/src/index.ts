@@ -61,6 +61,7 @@ class App {
 				await this.stop();
 				this.joined = false;
 				this.startButton.textContent = "加入房间"
+				localNameLabel.style.color = 'black';
 				console.log("button stopped");
 			}
 		});
@@ -69,23 +70,22 @@ class App {
 		this.endButton.addEventListener('click', async () => {
 			const updated = await this.vrtc.endRoom();
 			if(updated) {
-				logViewer.info("end room");
+				logViewer.info("End room");
 			}
 
 			this.stop();
 			this.joined = false;
 			this.startButton.textContent = "加入房间"
+			localNameLabel.style.color = 'black';
 		});
 
 		textDialog.addEventListener('close', () => {
 			if (textDialog.returnValue === 'ok') {
 				const value = dialogInputText.value;
-				if (value) {
-					console.log("用户输入:", value);
-					makeLabelMyUsername(inputUserName.value, value);
-					this.userExt = value;
-					this.vrtc.updateUserExt(value);
-				}
+				console.log("用户输入:", value);
+				makeLabelMyUsername(inputUserName.value, value);
+				this.userExt = value;
+				this.vrtc.updateUserExt(value);
 			}
 		});
 
@@ -148,12 +148,30 @@ class App {
         //     },
 		// })
 
-		vrtc.on(VVRTC.EVENT.CLOSED_BY_SERVER, async (obj) => {
-			console.log("on CLOSED_BY_SERVER: ", obj);
-			logViewer.error(`closed by server. status [${obj.code}-${obj.reason}]`);
+		vrtc.on(VVRTC.EVENT.JOINED_ROOM, async (obj) => {
+			console.log("on JOINED_ROOM: ", obj);
+			logViewer.info(`Joined room [${obj.roomId}]`);
+			localNameLabel.style.color = 'green';
+		});
+
+		vrtc.on(VVRTC.EVENT.CLOSED, async (obj) => {
+			console.log("on CLOSED: ", obj);
+			const msg = JSON.stringify(obj);
+			logViewer.error(`closed. status [${msg}]`);
 			await this.stop();
 			this.joined = false;
 			this.startButton.textContent = "加入房间"
+			localNameLabel.style.color = 'black';
+		});
+
+		vrtc.on(VVRTC.EVENT.DISCONNECT, async (obj) => {
+			console.log("on DISCONNECTED: ", obj);
+			logViewer.error(`disconnect. event [${obj}]`);
+		});
+
+		vrtc.on(VVRTC.EVENT.RECONN_SESSION, async (obj) => {
+			console.log("on RECONN_SESSION: ", obj);
+			logViewer.info(`reconnect session. event [${JSON.stringify(obj)}]`);
 		});
 
 		vrtc.on(VVRTC.EVENT.USER_JOIN, ({userId, userExt}) => {
@@ -173,7 +191,7 @@ class App {
 
 			makeLabelUsername(grid.labelName, userId, userExt);
 			if(userId === inputUserName.value) {
-				grid.labelName.style.color = 'red';
+				grid.labelName.style.color = 'green';
 			}
 
 			initVideo(grid.video);
@@ -445,7 +463,7 @@ class App {
 
 	private async start() {
 		const roomId = inputRoomName.value;
-		logViewer.info(`Join room (${roomId})...`);
+		logViewer.debug(`Join room [${roomId}]...`);
 
 		const vrtc = this.vrtc;
 
@@ -479,14 +497,33 @@ class App {
 			vrtc.closeLocalMic();
 		}
 
-		await vrtc.joinRoom({
+
+		vrtc.joinRoom({
 			userId: inputUserName.value,
 			roomId,
 			userExt: this.userExt, // "this_is_user_ext",
 			watchMe: cfgWatchMe,
 		});
 
-		logViewer.info("Joined room");
+		// const join_err = await vrtc.joinRoom({
+		// 	userId: inputUserName.value,
+		// 	roomId,
+		// 	userExt: this.userExt, // "this_is_user_ext",
+		// 	watchMe: cfgWatchMe,
+		// });
+
+		// if(!join_err) {
+		// 	logViewer.info("Joined room");
+		// } else {
+		// 	console.warn("Join error", join_err);
+		// 	// const msg = join_result.message;
+		// 	// const name = join_result.name;
+		// 	const err = join_err;
+		// 	const msg = JSON.stringify(err);
+		// 	logViewer.error(`Join error [${msg}]`);
+		// }
+
+		
 	}
 
 	private async stop() {

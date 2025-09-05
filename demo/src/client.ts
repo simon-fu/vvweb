@@ -4,15 +4,6 @@ import { EventEmitter, Listener } from "./emitter";
 
 // type Result<T, E> = { type: 'ok', value: T } | { type: 'err', error: E };
 
-// const MEDIA_KIND_MAP: Record<MediaKind, number> = {
-//     audio: 1,
-//     video: 2
-// };
-
-// const APP_ID = "default-app"; // "BEE70049B999BB338E787A4AD20A804333C949C3";
-// const CALL_ID = "default-call";
-// const CHAIN_ID = "default-chain"; // "74aea504-e8ec-4de1-ba78-ae5af4fba699"
-
 
 export interface Stream {
 	seq: number;
@@ -46,7 +37,7 @@ export interface Status {
 
 
 export class Client {
-    private ws: WebSocket;
+    private ws?: WebSocket;
 
     private emitter: EventEmitter;
 
@@ -56,20 +47,30 @@ export class Client {
         reject: (reason?: any) => void;
     }>;
     private msgIdCounter: number;
-    // private sessionId: string;
+    private sessionId?: string;
     private userId: string;
 
-    constructor(wsOrUrl: WebSocket | string, userId: string) {
-        this.ws = typeof wsOrUrl === "string" ? new WebSocket(wsOrUrl) : wsOrUrl;
+    // in milliseconds
+    private maxReconnInterval: number = 1000; 
+    private maxReconnectTimeout?: number = 5000;
+    private connectTimeout: number = 3000;
+
+    private url?: string;
+    private reconnStartTime: number = 0; // 第一次重连开始时间
+
+    private roomCursors: Record<string, number> = {};
+    // const roomCursors: { [roomId: string]: number } = {}; // 等价于 Record<string, number>
+
+    constructor(url: string, userId: string) {
+        // this.ws = typeof wsOrUrl === "string" ? new WebSocket(wsOrUrl) : wsOrUrl;
+        this.url = url;
         this.userId = userId;
         this.pendingRequests = new Map();
         this.msgIdCounter = 1;
         // this.sessionId = "";
         this.emitter = new EventEmitter();
 
-        this.ws.onmessage = this.handleMessage.bind(this);
-        this.ws.onerror = this.handleError.bind(this);
-        this.ws.onclose = this.handleClose.bind(this);
+        this.tryKickConnect(false);
     }
 
     private handleMessage(event: MessageEvent) {
@@ -108,12 +109,18 @@ export class Client {
                 const body = JSON.parse(notice.json);
                 delete notice.json;
                 notice.body = body;
+                this.roomCursors[notice.room_id] = notice.seq;
                 const handled = this.trigger("notice", notice);
                 if (handled) {
                     return;
                 }
             } else if (msg.msg_type.ClosedNotice) {
-                const handled = this.trigger("closed", msg.msg_type.ClosedNotice);
+                const ev = msg.msg_type.ClosedNotice;
+                if(ev.status) {
+                    ev.status.from = "server";
+                }
+                // const handled = this.trigger("closed", ev);
+                const handled = this.triggerClosed(ev.status.code, ev.status.reason, ev.status.from);
                 if (handled) {
                     return;
                 }
@@ -140,10 +147,125 @@ export class Client {
             reject(new Error("WebSocket closed [" + origin + "]"));
         }
         this.pendingRequests.clear();
+
+        this.trigger("disconnect", {event});
+
+        this.tryKickConnect(true);
+    }
+
+    public close() {
+        if(this.ws) {
+            this.ws.onmessage = null;
+            this.ws.onerror = null;
+            this.ws.onclose = null;
+            this.ws.onopen = null;
+            this.ws.close();
+            this.ws = undefined;
+        }
+
+        this.url = undefined;
+    }
+
+    private tryKickConnect(reconn: boolean) {
+        const url = this.url;
+        const delay = reconn ? this.maxReconnInterval : 0;
+        setTimeout(async () => {
+
+            if(url && url === this.url) {
+                this.doKickConnect(url);
+            }
+        }, delay);
+    }
+
+    private triggerClosed(code: number, reason: string, from: string) : boolean {
+        this.reconnStartTime = 0;
+        
+        this.url = undefined;
+        // this.trigger("reconnect-fail", {});
+        return this.trigger("closed", {status: {code, reason, from}});
+    }
+
+    private doKickConnect(url: string) {
+
+        if(this.reconnStartTime > 0) {
+            const timeout = this.maxReconnectTimeout||0;
+            if((Date.now() - this.reconnStartTime) > timeout) {
+                // console.warn("reconnect timeout");
+                // this.trigger("reconnect-fail", {});
+                this.triggerClosed(111, "reconnect timeout", "local");
+                return;
+            }
+        } else {
+            this.reconnStartTime = Date.now();
+        }
+
+        console.log("start connecting to ", url);
+        this.ws = undefined;
+        const ws = new WebSocket(url);
+
+        const flag = {
+            handled: false,
+        };
+
+        const timeoutHandle = setTimeout(async () => {
+            if(!flag.handled) {
+                console.warn("connection timeout");
+                flag.handled = true;
+                ws.close();
+                this.handleConnectFailed();
+            } 
+            
+        }, this.connectTimeout);
+
+
+        ws.onopen = (event: Event) => {
+            if(!this.url || flag.handled) {
+                return;
+            }
+
+            clearTimeout(timeoutHandle);
+
+            console.log("WebSocket opened", url, event);
+            this.ws = ws;
+            this.ws.onmessage = this.handleMessage.bind(this);
+            this.ws.onerror = this.handleError.bind(this);
+            this.ws.onclose = this.handleClose.bind(this);
+            // this.ws.onopen = this.handleOpen.bind(this);
+
+            this.reconnStartTime = 0; // TODO: 应该在 Reconnect Request 收到响应时候在置 0
+            this.trigger("connected", {event});
+
+            if(this.sessionId) {
+                const sessionId = this.sessionId;
+                setTimeout(async () => {
+                    if(sessionId === this.sessionId) {
+                        await this.reconn_session(sessionId);
+                    }
+                }, 0);
+                
+            }
+        };
+
+        ws.onerror = (event: Event) => {
+            if(!flag.handled) {
+                console.error("connect failed", event);
+                this.handleConnectFailed();
+            }
+        };
+    }
+
+    private handleConnectFailed() {
+        this.trigger("connect-error", {});
+        this.tryKickConnect(true);
     }
 
     public async invoke(req: any, origin: string): Promise<any> {
         return new Promise((resolve, reject) => {
+            if(!this.ws) {
+                reject(new Error("no connection"));
+                return;
+            }
+
             const msg_id = this.msgIdCounter++;
             req.msg_id = msg_id;
             
@@ -172,12 +294,11 @@ export class Client {
     }
 
     // 触发事件
-    private trigger<T>(event: string, data: T): Boolean {
+    private trigger<T>(event: string, data: T): boolean {
         return this.emitter.emit(event, data);
     }
 
     public async open_session(room_id: string, user_ext?: string): Promise<any> {
-        // console.log("open session ...");
         const rsp = await this.invoke({
             // msg_id: next_msg_id(),
             typ: {
@@ -188,24 +309,68 @@ export class Client {
                 },
             }
         }, "open_session");
-        // console.log("opened response:", rsp.OpenSessionResponse);
-        // this.sessionId = rsp.OpenSessionResponse.session_id;
+
+        const status = rsp.Open.status ?? {code: 0, reason: ""};
+        if (status.code == 0) {
+            this.sessionId = rsp.Open.session_id;
+            this.roomCursors[room_id] = 0;
+        } else {
+
+        }
+
         return rsp.Open;
+    }
+
+    async reconn_session(sessionId: string): Promise<any> {
+        const room_cursors = Object.entries(this.roomCursors).map(([room_id, seq]) => ({
+            room_id,
+            seq
+        }));
+
+        const rsp = await this.invoke({
+            typ: {
+                Reconn: {
+                    session_id: sessionId,
+                    room_cursors,
+                    try_seq: 0,
+                    last_success_seq: 0,
+                    magic: 20250901,
+                },
+            }
+        }, "reconn_session");
+
+        console.log("reconn_session:", rsp.Reconn);
+
+        const status = rsp.Reconn.status ?? {code: 0, reason: ""};
+        if (status.code == 0) {
+            this.trigger("reconn-session", {
+                conn_id: rsp.Reconn.conn_id,
+            });
+        } else {
+            this.triggerClosed(status.code, status.reason, "server");
+        }
+
+        return rsp.Reconn;
     }
 
     public async close_session(room_id: string): Promise<any> {
         // console.log("close session ...");
-        const rsp = await this.invoke({
-            typ: {
-                Close: {
-                    room_id,
-                },
-            }
-        }, "close_session");
+        try {
+            const rsp = await this.invoke({
+                typ: {
+                    Close: {
+                        room_id,
+                    },
+                }
+            }, "close_session");
 
-        this.ws.close();
+            this.close();
 
-        return rsp.Close;
+            return rsp.Close;
+        } catch (err) {
+            console.log("close_session error", err);
+            this.close();
+        }
     }
 
     public async end_room(room_id: string): Promise<any> {
@@ -218,7 +383,7 @@ export class Client {
             }
         }, "end_room");
 
-        this.ws.close();
+        this.close();
 
         return rsp.End;
     }
