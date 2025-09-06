@@ -1075,8 +1075,7 @@ export class VVRTC {
             return false;
         }
 
-        const rsp = await this.client.end_room(this.roomConfig.roomId);
-        console.log("end room response", rsp);   
+        await this.client.end_room(this.roomConfig.roomId);
 
         await this.cleanUp();
         return true;

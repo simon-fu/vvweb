@@ -407,8 +407,8 @@ export class Client {
     }
 
     public async close_session(room_id: string): Promise<void> {
-        // console.log("close session ...");
         try {
+            // console.log("close session ...");
             const rsp = await this.invoke({
                 typ: {
                     Close: {
@@ -416,7 +416,7 @@ export class Client {
                     },
                 }
             }, "close_session");
-            console.log("closed session response", rsp);  
+            console.log("close_session response", rsp);  
             
             this.cleanUp();
 
@@ -427,19 +427,26 @@ export class Client {
         }
     }
 
-    public async end_room(room_id: string): Promise<any> {
-        // console.log("close session ...");
-        const rsp = await this.invoke({
-            typ: {
-                End: {
-                    room_id,
-                },
-            }
-        }, "end_room");
+    public async end_room(room_id: string): Promise<void> {
+        try {
+            // console.log("end room ...", room_id);
+            const rsp = await this.invoke({
+                typ: {
+                    End: {
+                        room_id,
+                    },
+                }
+            }, "end_room");
+            console.log("end_room response", rsp);   
 
-        this.cleanUp();
+            this.cleanUp();
 
-        return rsp.End;
+            // return rsp.End;
+        } catch (err) {
+            console.log("end_room error", err);
+            this.cleanUp();
+        }
+
     }
 
     public async create_producer_transport(roomId: string): Promise<any> {
