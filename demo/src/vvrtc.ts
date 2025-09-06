@@ -968,7 +968,11 @@ export class VVRTC {
 
     public async joinRoom(args: JoinRoomConfig): Promise<VVRTCStatus|undefined> {
 
-        const client = new Client(this.url, args.userId);
+        const client = new Client({
+            url: this.url, 
+            userId: args.userId,
+            roomId: args.roomId,
+        });
         
         this.client = client;
         this.roomConfig = args;
@@ -1000,8 +1004,12 @@ export class VVRTC {
             this.trigger(VVRTC.EVENT.CLOSED, output);
         });
 
+        client.on("opened", async (_ev: any) => {
+            this.checkOpened();
+        });
+
         client.on("connected", async (_ev: any) => {
-            this.checkConnected();
+            // this.checkConnected();
         });
 
         client.on("reconn-session", async (ev: any) => {
@@ -1055,8 +1063,7 @@ export class VVRTC {
             return false;
         }
 
-        const rsp = await this.client.close_session(this.roomConfig.roomId);
-        console.log("closed session response", rsp);   
+        await this.client.close_session(this.roomConfig.roomId);
 
         await this.cleanUp();
 
@@ -1075,15 +1082,15 @@ export class VVRTC {
         return true;
     }
 
-    private async checkConnected() {
+    private async checkOpened() {
         if(!this.client || !this.roomConfig) {
             return;
         }
 
-        if (this.device) {
-            console.log("re-connected");
-            return;
-        }
+        // if (this.device) {
+        //     console.log("re-connected");
+        //     return;
+        // }
 
         const device = new Device();
         await device.load({
@@ -1092,18 +1099,20 @@ export class VVRTC {
         console.log("device loaded");
         this.device = device;
 
-        {
-            const rsp = await this.client.open_session(this.roomConfig.roomId, this.roomConfig.userExt);
-            console.log("opened session response  ", rsp);
-            const status: VVRTCStatus = rsp.status ?? {code: 0, reason: ""};
-            status.from = "server";
-            this.fireJoinResult(status.code == 0 ? undefined : status);
-            if(status.code !== 0) {
-                await this.cleanUp();
-                this.trigger(VVRTC.EVENT.CLOSED, status);
-                return;
-            }
-        }
+        this.fireJoinResult();
+
+        // {
+        //     const rsp = await this.client.open_session(this.roomConfig.roomId, this.roomConfig.userExt);
+        //     console.log("opened session response  ", rsp);
+        //     const status: VVRTCStatus = rsp.status ?? {code: 0, reason: ""};
+        //     status.from = "server";
+        //     this.fireJoinResult(status.code == 0 ? undefined : status);
+        //     if(status.code !== 0) {
+        //         await this.cleanUp();
+        //         this.trigger(VVRTC.EVENT.CLOSED, status);
+        //         return;
+        //     }
+        // }
 
         setTimeout(async () => {
             try {
