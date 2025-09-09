@@ -972,6 +972,7 @@ export class VVRTC {
             url: this.url, 
             userId: args.userId,
             roomId: args.roomId,
+            userExt: args.userExt,
         });
         
         this.client = client;
