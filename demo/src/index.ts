@@ -295,12 +295,12 @@ class App {
 				}
 			});
 
-			logViewer.info(`User leave [${userId}]`);
+			logViewer.info(`Leaved user [${userId}]`);
 		});
 
 		vrtc.on(VVRTC.EVENT.USER_EXT_CHANGED, ({userId, userExt}) => {
 			console.log("on USER_EXT_CHANGED: user", userId, "ext", userExt);
-			logViewer.info(`User ext changed, user [${userId}], ext [${userExt}]`);
+			logViewer.info(`Ext changed, user [${userId}], ext [${userExt}]`);
 
 			// const grid = this.grids.get(userId)
 			
