@@ -94,6 +94,8 @@ export const VVRTCEvent = {
     DISCONNECT: 'disconnect',
     JOINED_ROOM: 'joined-room',
     RECONN_SESSION: 'reconn-session',
+    UPDATE_USER_TREE: 'up-user-tree',
+    UPDATE_ROOM_TREE: 'up-room-tree',
     
 } as const; 
 
@@ -151,7 +153,17 @@ export declare interface VVRTCEventTypes {
     }];
     [VVRTCEvent.JOINED_ROOM]: [{
         roomId: string;
-    }]
+    }];
+    [VVRTCEvent.UPDATE_USER_TREE]: [{
+		userId: string;
+        path: string;
+        value?: string;
+	}];
+    [VVRTCEvent.UPDATE_ROOM_TREE]: [{
+        roomId: string;
+        path: string;
+        value?: string;
+	}];
 }
 
 class VVRTCEmitter {
@@ -983,6 +995,20 @@ export class VVRTC {
             if (notice.body.User) {
                 const user: User = notice.body.User;
                 await this.updateUser(user);
+            } else if (notice.body.UTree) {
+                let obj = notice.body.UTree;
+                this.trigger(VVRTC.EVENT.UPDATE_USER_TREE, {
+                    userId: obj.id,
+                    value: obj.value,
+                    path: obj.path,
+                });
+            } else if (notice.body.RTree) {
+                let obj = notice.body.RTree;
+                this.trigger(VVRTC.EVENT.UPDATE_ROOM_TREE, {
+                    roomId: notice.room_id,
+                    value: obj.value,
+                    path: obj.path,
+                });
             } else {
                 console.warn("unknown notice", notice);
             }
@@ -1761,6 +1787,28 @@ export class VVRTC {
         }
 
         await this.client.updateUserExt(ext);
+
+        return;
+    }
+
+    public async updateUserTree(path: string, value?: string) {
+
+        if (!this.client) {
+            return;
+        }
+
+        await this.client.updateUserTree(path, value);
+
+        return;
+    }
+
+    public async updateRoomTree(path: string, value?: string) {
+
+        if (!this.client) {
+            return;
+        }
+
+        await this.client.updateRoomTree(path, value);
 
         return;
     }

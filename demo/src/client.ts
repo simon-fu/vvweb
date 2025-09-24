@@ -56,7 +56,12 @@ const defaultOptions: Required<Pick<OptionalOptions, "maxReconnInterval" | "maxR
     connectTimeout: 3000,
 };
 
-
+class StatusError extends Error {
+    constructor(public status: { code: number; reason: string }) {
+        super(`status code: ${status.code}, reason: ${status.reason ?? ""}`);
+        this.name = "StatusError";
+    }
+}
 
 export class Client {
     private ws?: WebSocket;
@@ -119,7 +124,7 @@ export class Client {
                 pending.resolve(msg.msg_type.Response.response_type);
             } else {
                 console.error("response status:", status);
-                pending.reject(new Error(status))
+                pending.reject(new StatusError(status))
             }
 
         } else {
@@ -254,7 +259,7 @@ export class Client {
             this.ws.onclose = this.handleClose.bind(this);
             // this.ws.onopen = this.handleOpen.bind(this);
 
-            this.reconnStartTime = 0; // TODO: 应该在 Reconnect Request 收到响应时候在置 0
+            // this.reconnStartTime = 0; // TODO: 应该在 Reconnect Request 收到响应时候再置 0
             this.trigger("connected", {event});
 
             setTimeout(async () => {
@@ -262,10 +267,23 @@ export class Client {
                     return;
                 }
 
-                if(!this.sessionId) {
-                    await this.open_session();
-                } else {
-                    await this.reconn_session(this.sessionId);
+                try {
+                    if(!this.sessionId) {
+                        await this.open_session();
+                    } else {
+                        await this.reconn_session(this.sessionId);
+                    }
+                    this.reconnStartTime = 0;
+                } catch (err) {
+
+                    ws.close();
+
+                    if (err instanceof StatusError) {
+                        console.error("connect status:", err.status);
+                        this.triggerClosed(err.status.code, err.status.reason, "server");
+                    } else {
+                        console.log("connect error", err);
+                    }
                 }
                 
             }, 0);
@@ -632,6 +650,32 @@ export class Client {
         }, "updateUserExt");
 
         return rsp.UpExt;
+    }
+
+    public async updateUserTree(path: string, value?: string) : Promise<any> {
+        const rsp = await this.invoke({
+            typ: {
+                UpUTree: {
+                    path,
+                    value,
+                },
+            }
+        }, "updateUserTree");
+
+        return rsp.UpUTree;
+    }
+
+    public async updateRoomTree(path: string, value?: string) : Promise<any> {
+        const rsp = await this.invoke({
+            typ: {
+                UpRTree: {
+                    path,
+                    value,
+                },
+            }
+        }, "updateRoomTree");
+
+        return rsp.UpRTree;
     }
 }
 

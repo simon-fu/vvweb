@@ -21,6 +21,8 @@ interface UserGrid {
 
 interface User {
 	grids: string[];
+	ext?: string;
+	treeKv: Map<string, string>;
 }
 
 class App {
@@ -35,11 +37,13 @@ class App {
 	private users: Map<string, User>;
 	private joined: boolean;
 	private userExt?: string;
+	private myTreeKv: Map<string, string>;
 
 	public constructor() {
 		this.grids = new Map;
 		this.users = new Map;
 		this.joined = false;
+		this.myTreeKv = new Map;
 		
 		const vrtc = VVRTC.create({
 			url: inputUrl.value,
@@ -79,22 +83,64 @@ class App {
 			localNameLabel.style.color = 'black';
 		});
 
-		textDialog.addEventListener('close', () => {
-			if (textDialog.returnValue === 'ok') {
-				const value = dialogInputText.value;
-				console.log("用户输入:", value);
-				makeLabelMyUsername(inputUserName.value, value);
-				this.userExt = value;
-				this.vrtc.updateUserExt(value);
-			}
+		// textDialog.addEventListener('close', () => {
+		// 	if (textDialog.returnValue === 'ok') {
+		// 		const inputValue = dialogInputText.value;
+		// 		console.log("用户输入:", inputValue);
+
+		// 		this.userExt = inputValue;
+
+		// 		if (!this.joined) {
+					
+		// 			makeLabelMyUsername(inputUserName.value, inputValue);
+		// 		} else {
+		// 			this.vrtc.updateUserExt(this.userExt);
+
+		// 			const path = "user.foo";
+		// 			const uvalue = inputValue ? "user-value" : undefined;
+		// 			const rvalue = inputValue ? "room-value" : undefined;
+
+		// 			if(uvalue) {
+		// 				this.myTreeKv.set(path, uvalue);
+		// 			} else {
+		// 				this.myTreeKv.delete(path);
+		// 			}
+					
+		// 			this.vrtc.updateUserTree(path, uvalue);
+		// 			this.vrtc.updateRoomTree("room.bar", rvalue);
+
+		// 			makeLabelMyUsername(inputUserName.value, this.userExt, this.myTreeKv);
+		// 		}
+				
+
+		// 		if (!this.userExt) {
+					
+		// 		} else {
+					
+		// 		}
+		// 	}
+		// });
+
+		
+		userExtButton.addEventListener('click', async () => {
+			this.vrtc.updateUserExt(userExtInput.value);
 		});
 
-		localNameLabel.ondblclick = () => {
-			dialogInputText.value = '';
-			dialogInputText.placeholder = 'User ext'
-			textDialog.showModal();
-			dialogInputText.focus();
-		};
+		userTreeButton.addEventListener('click', async () => {
+			this.vrtc.updateUserTree(userTreePathInput.value, userTreeValueInput.value||undefined);
+		});
+
+		roomTreeButton.addEventListener('click', async () => {
+			this.vrtc.updateRoomTree(roomTreePathInput.value, roomTreeValueInput.value||undefined);
+		});
+		
+
+		// localNameLabel.ondblclick = () => {
+		// 	dialogInputText.value = '';
+		// 	dialogInputText.placeholder = 'User ext'
+		// 	textDialog.showModal();
+		// 	dialogInputText.focus();
+		// };
 
 		const shareButton = document.getElementById('button_share') as HTMLButtonElement ;
 		shareButton.addEventListener('click', async () => {
@@ -176,9 +222,12 @@ class App {
 
 		vrtc.on(VVRTC.EVENT.USER_JOIN, ({userId, userExt}) => {
 			console.log("on USER_JOIN: user", userId, ", ext", userExt);
-			
+			logViewer.info(`joined user [${userId}], ext [${userExt}]`);
+
 			const user: User = {
 				grids: [],
+				treeKv: new Map,
+				ext: userExt,
 			};
 
 			this.users.set(userId, user);
@@ -189,7 +238,8 @@ class App {
 			this.grids.set(gridId, grid);
 			user.grids.push(gridId);
 
-			makeLabelUsername(grid.labelName, userId, userExt);
+			makeLabelUsername(grid.labelName, userId, undefined);
+
 			if(userId === inputUserName.value) {
 				grid.labelName.style.color = 'green';
 			}
@@ -245,17 +295,60 @@ class App {
 				}
 			});
 
+			logViewer.error(`user leave [${userId}]`);
 		});
 
 		vrtc.on(VVRTC.EVENT.USER_EXT_CHANGED, ({userId, userExt}) => {
 			console.log("on USER_EXT_CHANGED: user", userId, "ext", userExt);
-			const grid = this.grids.get(userId)
-			
-			if (!grid) {
-				return;
-			}
+			logViewer.info(`user ext changed, user [${userId}], ext [${userExt}]`);
 
-			makeLabelUsername(grid.labelName, userId, userExt);
+			// const grid = this.grids.get(userId)
+			
+			// if (!grid) {
+			// 	return;
+			// }
+
+			// const user = this.users.get(userId);
+			// if (!user) {
+			// 	return;
+			// }
+
+			// user.ext = userExt;
+			// makeLabelUsername(grid.labelName, userId, user.ext, user.treeKv);
+			
+			
+		});
+
+		vrtc.on(VVRTC.EVENT.UPDATE_USER_TREE, ({userId, path, value}) => {
+			console.log("on UPDATE_USER_TREE: user", '[', userId, ']', "path", '[',path,']', "value", '[',value,']',);
+			logViewer.info(`tree updated, user [${userId}], [${path}] -> [${value}]`);
+
+			// const grid = this.grids.get(userId)
+			// if (!grid) {
+			// 	return;
+			// }
+
+			// const user = this.users.get(userId);
+			// if (!user) {
+			// 	return;
+			// }
+
+			// if (path) {
+			// 	if (value) {
+			// 		user.treeKv.set(path, value);
+			// 	} else {
+			// 		user.treeKv.delete(path);
+			// 	}
+			// } 
+
+			// makeLabelUsername(grid.labelName, userId, user.ext, user.treeKv);
+			
+			
+		});
+
+		vrtc.on(VVRTC.EVENT.UPDATE_ROOM_TREE, ({roomId, path, value}) => {
+			console.log("on UPDATE_ROOM_TREE: ", 'path [',path,']', 'value [',value,']',);
+			logViewer.info(`tree updated, room [${roomId}], [${path}] -> [${value}]`);
 		});
 
 		vrtc.on(VVRTC.EVENT.USER_CAMERA_ON, ({userId}) => {
@@ -497,11 +590,13 @@ class App {
 			vrtc.closeLocalMic();
 		}
 
+		// const userExt = this.userExt; // "this_is_user_ext",
+		const userExt = userExtInput.value;
 
 		vrtc.joinRoom({
 			userId: inputUserName.value,
 			roomId,
-			userExt: this.userExt, // "this_is_user_ext",
+			userExt,
 			watchMe: cfgWatchMe,
 		});
 
@@ -541,6 +636,10 @@ class App {
 		});
 
 		this.grids.clear();
+
+		this.myTreeKv.clear();
+		makeLabelMyUsername(inputUserName.value, this.userExt);
+
 	}
 }
 
@@ -779,25 +878,45 @@ const localNameLabel = document.getElementById('local-name') as HTMLLabelElement
 // localNameLabel.textContent = 'Me (' + inputUserName.value + ')'; 
 makeLabelMyUsername(inputUserName.value);
 
-function makeLabelMyUsername(userId: string, userExt?: string) {
+function makeLabelMyUsername(userId: string, userExt?: string, extKv?: Map<string, string>) {
 	if (userExt) {
 		localNameLabel.textContent = 'Me (' + userId + ')' + '(' + userExt + ')'; 
 	} else {
 		localNameLabel.textContent = 'Me (' + userId + ')'; 
 	}
+
+	if (extKv && extKv.size > 0) {
+		const str = JSON.stringify(Object.fromEntries(extKv));
+		localNameLabel.textContent = localNameLabel.textContent + ' ' + str;
+	}
 }
 
-function makeLabelUsername(label: HTMLLabelElement, userId: string, userExt?: string) {
+function makeLabelUsername(label: HTMLLabelElement, userId: string, userExt?: string, extKv?: Map<string, string>) {
 	if (userExt) {
 		label.textContent = userId + '(' +  userExt + ')';
 	} else {
 		label.textContent = userId;
 	}
+
+	if (extKv && extKv.size > 0) {
+		const str = JSON.stringify(Object.fromEntries(extKv));
+		label.textContent = label.textContent + ' ' + str;
+	}
 }
 
-const dialogInputText = document.getElementById('dialogInputText') as HTMLInputElement;
-const textDialog = document.getElementById('textDialog') as HTMLDialogElement;
+// const dialogInputText = document.getElementById('dialogInputText') as HTMLInputElement;
+// const textDialog = document.getElementById('textDialog') as HTMLDialogElement;
 
+const userExtButton = document.getElementById('button_user_ext') as HTMLButtonElement;
+const userExtInput = document.getElementById('input_user_ext') as HTMLInputElement;
+
+const userTreeButton = document.getElementById('button_user_tree') as HTMLButtonElement;
+const userTreePathInput = document.getElementById('input_user_tree_path') as HTMLInputElement;
+const userTreeValueInput = document.getElementById('input_user_tree_value') as HTMLInputElement;
+
+const roomTreeButton = document.getElementById('button_room_tree') as HTMLButtonElement;
+const roomTreePathInput = document.getElementById('input_room_tree_path') as HTMLInputElement;
+const roomTreeValueInput = document.getElementById('input_room_tree_value') as HTMLInputElement;
 
 
 const logViewer = new LogViewer("log_container", {

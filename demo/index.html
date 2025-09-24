@@ -51,7 +51,7 @@
     }
     /* 固定宽度、右对齐 label */
     .form-row label {
-      width: 80px;      
+      width: 100px;      
       text-align: right;
       margin-right: 10px;
     }
@@ -159,7 +159,7 @@
     <div>
         <details>
             <summary>Settings</summary>
-            <div style="display: flex; flex-direction: column;">
+            <div style="margin-left: 1.5em; display: flex; flex-direction: column;">
                 <div class="form-row">
                     <label for="input_url">Ws:</label>
                     <input id="input_url" type="text", style="flex: 1;">
@@ -172,6 +172,33 @@
                     <label for="input_user">User:</label>
                     <input id="input_user" type="text" size="32">
                 </div>
+            </div>
+
+            <div style="margin-left: 1.5em;">
+                <details>
+                    <summary>Ext/Tree</summary>
+
+                    <div class="form-row">
+                        <label for="input_user_ext" style = "margin-left: 1.5em;">User ext:</label>
+                        <input id="input_user_ext" type="text" size="40" placeholder = "ext">
+                        <button id="button_user_ext" style="margin-left: 1.5em;">Send</button>
+                    </div>
+
+                    <div class="form-row">
+                        <label for="input_user_tree_path" style = "margin-left: 1.5em;">User tree:</label>
+                        <input id="input_user_tree_path" type="text" size="20" placeholder = "path">
+                        <input id="input_user_tree_value" type="text" size="20" placeholder = "value" style="margin-left: 1.0em;">
+                        <button id="button_user_tree" style="margin-left: 1.5em;">Send</button>
+                    </div>
+
+                    <div class="form-row">
+                        <label for="input_room_tree_path" style = "margin-left: 1.5em;">Room tree:</label>
+                        <input id="input_room_tree_path" type="text" size="20" placeholder = "path">
+                        <input id="input_room_tree_value" type="text" size="20" placeholder = "value" style="margin-left: 1.0em;">
+                        <button id="button_room_tree" style="margin-left: 1.5em;">Send</button>
+                    </div>
+
+                </details>
             </div>
 
             <div style="margin-left: 1.5em;">
