@@ -203,7 +203,7 @@ class App {
 		vrtc.on(VVRTC.EVENT.CLOSED, async (obj) => {
 			console.log("on CLOSED: ", obj);
 			const msg = JSON.stringify(obj);
-			logViewer.error(`closed. status [${msg}]`);
+			logViewer.error(`Closed. status [${msg}]`);
 			await this.stop();
 			this.joined = false;
 			this.startButton.textContent = "加入房间"
@@ -212,17 +212,17 @@ class App {
 
 		vrtc.on(VVRTC.EVENT.DISCONNECT, async (obj) => {
 			console.log("on DISCONNECTED: ", obj);
-			logViewer.error(`disconnect. event [${obj}]`);
+			logViewer.error(`Disconnect. event [${obj}]`);
 		});
 
 		vrtc.on(VVRTC.EVENT.RECONN_SESSION, async (obj) => {
 			console.log("on RECONN_SESSION: ", obj);
-			logViewer.info(`reconnect session. event [${JSON.stringify(obj)}]`);
+			logViewer.info(`Reconnect session. event [${JSON.stringify(obj)}]`);
 		});
 
 		vrtc.on(VVRTC.EVENT.USER_JOIN, ({userId, userExt}) => {
 			console.log("on USER_JOIN: user", userId, ", ext", userExt);
-			logViewer.info(`joined user [${userId}], ext [${userExt}]`);
+			logViewer.info(`Joined user [${userId}], ext [${userExt}]`);
 
 			const user: User = {
 				grids: [],
@@ -295,12 +295,12 @@ class App {
 				}
 			});
 
-			logViewer.error(`user leave [${userId}]`);
+			logViewer.info(`User leave [${userId}]`);
 		});
 
 		vrtc.on(VVRTC.EVENT.USER_EXT_CHANGED, ({userId, userExt}) => {
 			console.log("on USER_EXT_CHANGED: user", userId, "ext", userExt);
-			logViewer.info(`user ext changed, user [${userId}], ext [${userExt}]`);
+			logViewer.info(`User ext changed, user [${userId}], ext [${userExt}]`);
 
 			// const grid = this.grids.get(userId)
 			
@@ -321,7 +321,7 @@ class App {
 
 		vrtc.on(VVRTC.EVENT.UPDATE_USER_TREE, ({userId, path, value}) => {
 			console.log("on UPDATE_USER_TREE: user", '[', userId, ']', "path", '[',path,']', "value", '[',value,']',);
-			logViewer.info(`tree updated, user [${userId}], [${path}] -> [${value}]`);
+			logViewer.info(`Tree updated, user [${userId}], [${path}] -> [${value}]`);
 
 			// const grid = this.grids.get(userId)
 			// if (!grid) {
@@ -348,7 +348,7 @@ class App {
 
 		vrtc.on(VVRTC.EVENT.UPDATE_ROOM_TREE, ({roomId, path, value}) => {
 			console.log("on UPDATE_ROOM_TREE: ", 'path [',path,']', 'value [',value,']',);
-			logViewer.info(`tree updated, room [${roomId}], [${path}] -> [${value}]`);
+			logViewer.info(`Tree updated, room [${roomId}], [${path}] -> [${value}]`);
 		});
 
 		vrtc.on(VVRTC.EVENT.USER_CAMERA_ON, ({userId}) => {
