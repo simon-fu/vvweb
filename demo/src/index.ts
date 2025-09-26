@@ -127,11 +127,19 @@ class App {
 		});
 
 		userTreeButton.addEventListener('click', async () => {
-			this.vrtc.updateUserTree(userTreePathInput.value, userTreeValueInput.value||undefined);
+			this.vrtc.updateUserTree({
+				path: userTreePathInput.value, 
+				value: userTreeValueInput.value||undefined,
+				prune: userTreePruneInput.checked,
+			});
 		});
 
 		roomTreeButton.addEventListener('click', async () => {
-			this.vrtc.updateRoomTree(roomTreePathInput.value, roomTreeValueInput.value||undefined);
+			this.vrtc.updateRoomTree({
+				path: roomTreePathInput.value, 
+				value: roomTreeValueInput.value||undefined,
+				prune: roomTreePruneInput.checked,
+			});
 		});
 		
 
@@ -319,9 +327,9 @@ class App {
 			
 		});
 
-		vrtc.on(VVRTC.EVENT.UPDATE_USER_TREE, ({userId, path, value}) => {
-			console.log("on UPDATE_USER_TREE: user", '[', userId, ']', "path", '[',path,']', "value", '[',value,']',);
-			logViewer.info(`Tree updated, user [${userId}], [${path}] -> [${value}]`);
+		vrtc.on(VVRTC.EVENT.UPDATE_USER_TREE, ({userId, path, value, prune}) => {
+			console.log("on UPDATE_USER_TREE: user", '[', userId, ']', "path", '[',path,']', "value", '[',value,']', "prune", '[',prune,']');
+			logViewer.info(`Tree updated, user [${userId}], [${path}] -> [${value}], prune [${prune}]`);
 
 			// const grid = this.grids.get(userId)
 			// if (!grid) {
@@ -346,9 +354,9 @@ class App {
 			
 		});
 
-		vrtc.on(VVRTC.EVENT.UPDATE_ROOM_TREE, ({roomId, path, value}) => {
-			console.log("on UPDATE_ROOM_TREE: ", 'path [',path,']', 'value [',value,']',);
-			logViewer.info(`Tree updated, room [${roomId}], [${path}] -> [${value}]`);
+		vrtc.on(VVRTC.EVENT.UPDATE_ROOM_TREE, ({roomId, path, value, prune}) => {
+			console.log("on UPDATE_ROOM_TREE: room", '[', roomId, ']', "path", '[',path,']', "value", '[',value,']', "prune", '[',prune,']');
+			logViewer.info(`Tree updated, room [${roomId}], [${path}] -> [${value}], prune [${prune}]`);
 		});
 
 		vrtc.on(VVRTC.EVENT.USER_CAMERA_ON, ({userId}) => {
@@ -904,6 +912,47 @@ function makeLabelUsername(label: HTMLLabelElement, userId: string, userExt?: st
 	}
 }
 
+
+const logViewer = new LogViewer("log_container", {
+	filterLinesOnSearch: true,
+	showTimestamp: true,
+	height: "230px",
+});
+
+
+const cfgWatchMe = getQueryBool(urlParams, "watchMe") ?? true;
+const cfgMicOn = getQueryBool(urlParams, "mic") ?? true;
+const cfgCameraOn = getQueryBool(urlParams, "camera") ?? true; 
+const cfgEchoCancel = getQueryBool(urlParams, "echoCancel") ?? true;
+const cfgPrune = getQueryBool(urlParams, "prune") ?? true;
+
+
+const textaArgs = document.getElementById('texta_args') as HTMLTextAreaElement;
+textaArgs.value = 
+`ws - Websocket url, e.g. ws://127.0.0.1:11080/ws, wss://tt1.rtcsdk.com:11443/ws.
+room - Room name.
+user - User name, default random string.
+watchMe - Enable watching myself, default true.
+mic - Enable micphone, default true.
+camera = Enable camera, default true.
+echoCancel - Enable audio echo cancellation, default true.
+small - Enable small video stream, default true.
+prune - Enable prune when set user/room tree, default true.
+`;
+
+
+function getQueryBool(params: URLSearchParams, key: string): boolean | undefined {
+//   const params = new URLSearchParams(window.location.search);
+  const value = params.get(key);
+
+  if (value === null) return undefined; // 参数不存在
+  if (value === '' || value.toLowerCase() === 'true' || value === '1') return true;
+  if (value.toLowerCase() === 'false' || value === '0') return false;
+
+  return undefined; // 不可识别的值
+}
+
+
 // const dialogInputText = document.getElementById('dialogInputText') as HTMLInputElement;
 // const textDialog = document.getElementById('textDialog') as HTMLDialogElement;
 
@@ -918,42 +967,12 @@ const roomTreeButton = document.getElementById('button_room_tree') as HTMLButton
 const roomTreePathInput = document.getElementById('input_room_tree_path') as HTMLInputElement;
 const roomTreeValueInput = document.getElementById('input_room_tree_value') as HTMLInputElement;
 
+const userTreePruneInput = document.getElementById('checkbox_user_tree_prune') as HTMLInputElement ;
+userTreePruneInput.checked = cfgPrune;
 
-const logViewer = new LogViewer("log_container", {
-	filterLinesOnSearch: true,
-	showTimestamp: true,
-	height: "230px",
-});
+const roomTreePruneInput = document.getElementById('checkbox_room_tree_prune') as HTMLInputElement ;
+roomTreePruneInput.checked = cfgPrune;
 
-
-const cfgWatchMe = getQueryBool(urlParams, "watchMe") ?? true;
-const cfgMicOn = getQueryBool(urlParams, "mic") ?? true;
-const cfgCameraOn = getQueryBool(urlParams, "camera") ?? true; 
-const cfgEchoCancel = getQueryBool(urlParams, "echoCancel") ?? true;
-
-const textaArgs = document.getElementById('texta_args') as HTMLTextAreaElement;
-textaArgs.value = 
-`ws - Websocket url, e.g. ws://127.0.0.1:11080/ws, wss://tt1.rtcsdk.com:11443/ws.
-room - Room name.
-user - User name, default random string.
-watchMe - Enable watching myself, default true.
-mic - Enable micphone, default true.
-camera = Enable camera, default true.
-echoCancel - Enable audio echo cancellation, default true.
-small - Enable small video stream, default true.
-`;
-
-
-function getQueryBool(params: URLSearchParams, key: string): boolean | undefined {
-//   const params = new URLSearchParams(window.location.search);
-  const value = params.get(key);
-
-  if (value === null) return undefined; // 参数不存在
-  if (value === '' || value.toLowerCase() === 'true' || value === '1') return true;
-  if (value.toLowerCase() === 'false' || value === '0') return false;
-
-  return undefined; // 不可识别的值
-}
 
 window.addEventListener('error', e => console.log('window error', e));
 window.addEventListener('unhandledrejection', e => console.log('unhandled rejection', e.reason));

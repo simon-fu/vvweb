@@ -158,11 +158,13 @@ export declare interface VVRTCEventTypes {
 		userId: string;
         path: string;
         value?: string;
+        prune: boolean; 
 	}];
     [VVRTCEvent.UPDATE_ROOM_TREE]: [{
         roomId: string;
         path: string;
         value?: string;
+        prune: boolean; 
 	}];
 }
 
@@ -1001,6 +1003,7 @@ export class VVRTC {
                     userId: obj.id,
                     value: obj.value,
                     path: obj.path,
+                    prune: obj.prune??false,
                 });
             } else if (notice.body.RTree) {
                 let obj = notice.body.RTree;
@@ -1008,6 +1011,7 @@ export class VVRTC {
                     roomId: notice.room_id,
                     value: obj.value,
                     path: obj.path,
+                    prune: obj.prune??false,
                 });
             } else {
                 console.warn("unknown notice", notice);
@@ -1791,24 +1795,24 @@ export class VVRTC {
         return;
     }
 
-    public async updateUserTree(path: string, value?: string) {
+    public async updateUserTree(req: {path: string, value?: string, prune?: boolean}) {
 
         if (!this.client) {
             return;
         }
 
-        await this.client.updateUserTree(path, value);
+        await this.client.updateUserTree(req);
 
         return;
     }
 
-    public async updateRoomTree(path: string, value?: string) {
+    public async updateRoomTree(req: {path: string, value?: string, prune?: boolean}) {
 
         if (!this.client) {
             return;
         }
 
-        await this.client.updateRoomTree(path, value);
+        await this.client.updateRoomTree(req);
 
         return;
     }

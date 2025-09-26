@@ -56,6 +56,19 @@
       margin-right: 10px;
     }
 
+    .input-row {
+      display: flex;
+      align-items: center;
+      margin-bottom: 5px;
+      margin-top: 5px;
+    }
+
+    .row-first {
+      width: 100px;      
+      text-align: right;
+      margin-right: 10px;
+    }
+
     [hidden] {
         display: none !important;
     }
@@ -178,23 +191,31 @@
                 <details>
                     <summary>Ext/Tree</summary>
 
-                    <div class="form-row">
-                        <label for="input_user_ext" style = "margin-left: 1.5em;">User ext:</label>
+                    <div class="input-row">
+                        <label for="input_user_ext" style = "margin-left: 1.5em;" class="row-first">User ext:</label>
                         <input id="input_user_ext" type="text" size="40" placeholder = "ext">
                         <button id="button_user_ext" style="margin-left: 1.5em;">Send</button>
                     </div>
 
-                    <div class="form-row">
-                        <label for="input_user_tree_path" style = "margin-left: 1.5em;">User tree:</label>
+                    <div class="input-row">
+                        <label for="input_user_tree_path" style = "margin-left: 1.5em;" class="row-first">User tree:</label>
                         <input id="input_user_tree_path" type="text" size="20" placeholder = "path">
                         <input id="input_user_tree_value" type="text" size="20" placeholder = "value" style="margin-left: 1.0em;">
+                        
+                        <label for="checkbox_user_tree_prune" style = "margin-left: 0.5em;">prune</label>
+                        <input type="checkbox" id="checkbox_user_tree_prune"/>
+
                         <button id="button_user_tree" style="margin-left: 1.5em;">Send</button>
                     </div>
 
-                    <div class="form-row">
-                        <label for="input_room_tree_path" style = "margin-left: 1.5em;">Room tree:</label>
+                    <div class="input-row">
+                        <label for="input_room_tree_path" style = "margin-left: 1.5em;" class="row-first">Room tree:</label>
                         <input id="input_room_tree_path" type="text" size="20" placeholder = "path">
                         <input id="input_room_tree_value" type="text" size="20" placeholder = "value" style="margin-left: 1.0em;">
+
+                        <label for="checkbox_room_tree_prune" style = "margin-left: 0.5em;">prune</label>
+                        <input type="checkbox" id="checkbox_room_tree_prune" />
+
                         <button id="button_room_tree" style="margin-left: 1.5em;">Send</button>
                     </div>
 

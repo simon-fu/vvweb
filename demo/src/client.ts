@@ -363,7 +363,13 @@ export class Client {
                 this.triggerClosed(status.code, status.reason, "server");
             }
         } catch(err) {
-            console.log("do_open_session error", err);
+            // console.log("do_open_session error", err);
+            if (err instanceof StatusError) {
+                console.error("open session response status:", err.status);
+                this.triggerClosed(err.status.code, err.status.reason, "server");
+            } else {
+                console.log("connect error", err);
+            }
         }
     }
 
@@ -652,26 +658,20 @@ export class Client {
         return rsp.UpExt;
     }
 
-    public async updateUserTree(path: string, value?: string) : Promise<any> {
+    public async updateUserTree(req: {path: string, value?: string, prune?: boolean}) : Promise<any> {
         const rsp = await this.invoke({
             typ: {
-                UpUTree: {
-                    path,
-                    value,
-                },
+                UpUTree: req,
             }
         }, "updateUserTree");
 
         return rsp.UpUTree;
     }
 
-    public async updateRoomTree(path: string, value?: string) : Promise<any> {
+    public async updateRoomTree(req: {path: string, value?: string, prune?: boolean}) : Promise<any> {
         const rsp = await this.invoke({
             typ: {
-                UpRTree: {
-                    path,
-                    value,
-                },
+                UpRTree: req,
             }
         }, "updateRoomTree");
 
