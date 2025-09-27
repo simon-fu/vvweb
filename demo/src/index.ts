@@ -1,6 +1,6 @@
 /* eslint-disable no-console */
 
-import { VideoType, VVRTC } from './vvrtc';
+import { TreeOp, VideoType, VVRTC } from './vvrtc';
 import { LogViewer } from "./log_viewer";
 
 interface UserGrid {
@@ -206,6 +206,12 @@ class App {
 			console.log("on JOINED_ROOM: ", obj);
 			logViewer.info(`Joined room [${obj.roomId}]`);
 			localNameLabel.style.color = 'green';
+
+			if (cfgRTrees) {
+				cfgRTrees.forEach(op => {
+					vrtc.updateRoomTree(op);
+				});
+			}
 		});
 
 		vrtc.on(VVRTC.EVENT.ROOM_READY, async (obj) => {
@@ -611,10 +617,11 @@ class App {
 			roomId,
 			userExt,
 			watchMe: cfgWatchMe,
-			userTree: [{
-				path: "foo.bar",
-				value: "abc",
-			}],
+			userTree: cfgUTrees,
+			// userTree: [{
+			// 	path: "foo.bar",
+			// 	value: "abc",
+			// }],
 		});
 
 		// const join_err = await vrtc.joinRoom({
@@ -934,6 +941,28 @@ const cfgMicOn = getQueryBool(urlParams, "mic") ?? true;
 const cfgCameraOn = getQueryBool(urlParams, "camera") ?? true; 
 const cfgEchoCancel = getQueryBool(urlParams, "echoCancel") ?? true;
 const cfgPrune = getQueryBool(urlParams, "prune") ?? true;
+const cfgUTrees: [TreeOp]|undefined = parse_query_json<[TreeOp]>("utrees");
+const cfgRTrees: [TreeOp]|undefined = parse_query_json<[TreeOp]>("rtrees");
+
+
+function parse_query_json<T>(key: string) : T | undefined {
+	const value = urlParams.get(key);
+	try  {
+		
+		if (!value) {
+			return undefined;	
+		} 
+
+		const parsed = JSON.parse(value) as T;
+
+		logViewer.info(`query[${key}]=${value}`);
+
+		return parsed;
+	} catch (err) {
+		logViewer.error(`wrong query [${key}] = [${value}]`);
+		return undefined;
+	}
+}
 
 
 const textaArgs = document.getElementById('texta_args') as HTMLTextAreaElement;
@@ -947,6 +976,8 @@ camera = Enable camera, default true.
 echoCancel - Enable audio echo cancellation, default true.
 small - Enable small video stream, default true.
 prune - Enable prune when set user/room tree, default true.
+utrees - Inital user tree array, e.g. [{"path":"query.k1","value":"qk1"}].
+rtrees - Inital user tree array, see utrees.
 `;
 
 
