@@ -15,7 +15,15 @@ export interface JoinRoomConfig {
 	roomId: string;
     userExt?: string;
     watchMe?: boolean;
+    userTree?: [TreeOp];
 }
+
+export interface TreeOp {
+    path: string,
+    value?: string,
+    prune?: boolean, 
+}
+
 
 export interface Statistics {
 	rtt: number;
@@ -990,6 +998,7 @@ export class VVRTC {
             userId: args.userId,
             roomId: args.roomId,
             userExt: args.userExt,
+            userTree: args.userTree,
         });
         
         this.client = client;
@@ -1022,9 +1031,13 @@ export class VVRTC {
         });
 
         client.on("ready-notice", async (ev: any) => {
-            this.trigger(VVRTC.EVENT.ROOM_READY, {
-                roomId: ev.room_id,
-            });
+            if (ev.Room) {
+                this.trigger(VVRTC.EVENT.ROOM_READY, {
+                    roomId: ev.Room.id,
+                });
+            } else {
+                console.warn("unknown ready notice", ev);
+            }
         });
 
         client.on("closed", async (ev: any) => {
@@ -1804,7 +1817,7 @@ export class VVRTC {
         return;
     }
 
-    public async updateUserTree(req: {path: string, value?: string, prune?: boolean}) {
+    public async updateUserTree(req: TreeOp) {
 
         if (!this.client) {
             return;
@@ -1815,7 +1828,7 @@ export class VVRTC {
         return;
     }
 
-    public async updateRoomTree(req: {path: string, value?: string, prune?: boolean}) {
+    public async updateRoomTree(req: TreeOp) {
 
         if (!this.client) {
             return;

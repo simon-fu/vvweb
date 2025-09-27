@@ -611,6 +611,10 @@ class App {
 			roomId,
 			userExt,
 			watchMe: cfgWatchMe,
+			userTree: [{
+				path: "foo.bar",
+				value: "abc",
+			}],
 		});
 
 		// const join_err = await vrtc.joinRoom({

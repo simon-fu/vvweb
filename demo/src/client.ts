@@ -46,6 +46,11 @@ export interface OptionalOptions {
     maxReconnectTimeout?: number,
     connectTimeout?: number,
     userExt?: string,
+    userTree?: [{
+        path: string,
+        value?: string,
+        prune?: boolean, 
+    }],
 }
 
 export type ClientOptions = RequiredOptions & OptionalOptions;
@@ -390,6 +395,7 @@ export class Client {
                     user_id: this.opts.userId,
                     room_id: roomId,
                     user_ext: this.opts.userExt,
+                    user_tree: this.opts.userTree,
                 },
             }
         }, "req_open_session");
