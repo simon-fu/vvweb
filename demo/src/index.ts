@@ -208,6 +208,11 @@ class App {
 			localNameLabel.style.color = 'green';
 		});
 
+		vrtc.on(VVRTC.EVENT.ROOM_READY, async (obj) => {
+			console.log("on ROOM_READY: ", obj);
+			logViewer.info(`Room ready [${obj.roomId}]`);
+		});
+
 		vrtc.on(VVRTC.EVENT.CLOSED, async (obj) => {
 			console.log("on CLOSED: ", obj);
 			const msg = JSON.stringify(obj);

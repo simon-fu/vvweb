@@ -149,6 +149,12 @@ export class Client {
                 if (handled) {
                     return;
                 }
+            } else if (msg.msg_type.ReadyNotice) {
+                const ev = msg.msg_type.ReadyNotice;
+                const handled = this.trigger("ready-notice", ev);
+                if (handled) {
+                    return;
+                }
             }
 
             console.warn("Unhandle msg", msg);
@@ -360,6 +366,7 @@ export class Client {
                     sessionId: this.sessionId,
                 });
             } else {
+                // 应该走不到这里
                 this.triggerClosed(status.code, status.reason, "server");
             }
         } catch(err) {

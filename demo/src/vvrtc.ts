@@ -96,7 +96,7 @@ export const VVRTCEvent = {
     RECONN_SESSION: 'reconn-session',
     UPDATE_USER_TREE: 'up-user-tree',
     UPDATE_ROOM_TREE: 'up-room-tree',
-    
+    ROOM_READY: 'room-ready',
 } as const; 
 
 export interface VVRTCStatus {
@@ -165,6 +165,9 @@ export declare interface VVRTCEventTypes {
         path: string;
         value?: string;
         prune: boolean; 
+	}];
+    [VVRTCEvent.ROOM_READY]: [{
+        roomId: string;
 	}];
 }
 
@@ -1018,6 +1021,12 @@ export class VVRTC {
             }
         });
 
+        client.on("ready-notice", async (ev: any) => {
+            this.trigger(VVRTC.EVENT.ROOM_READY, {
+                roomId: ev.room_id,
+            });
+        });
+
         client.on("closed", async (ev: any) => {
             console.log("recv closed: ", ev); 
 
@@ -1035,8 +1044,8 @@ export class VVRTC {
             this.trigger(VVRTC.EVENT.CLOSED, output);
         });
 
-        client.on("opened", async (_ev: any) => {
-            this.checkOpened();
+        client.on("opened", async (ev: any) => {
+            this.checkOpened(ev);
         });
 
         client.on("connected", async (_ev: any) => {
@@ -1112,7 +1121,7 @@ export class VVRTC {
         return true;
     }
 
-    private async checkOpened() {
+    private async checkOpened(_ev: {sessionId: string}) {
         if(!this.client || !this.roomConfig) {
             return;
         }
