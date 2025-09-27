@@ -147,7 +147,8 @@ export declare interface VVRTCEventTypes {
 
     [VVRTCEvent.AUDIO_VOLUME]: [{
         // 当前正在说话的用户
-		volumes: UserVolume[]; 
+        volumes: Map<string, UserVolume>; 
+		// volumes: UserVolume[]; 
 	}];
     [VVRTCEvent.TALKING_USERS]: [{
         users: string[];
@@ -388,7 +389,9 @@ export class VVRTC {
     private talkingEventIntervalId?: NodeJS.Timeout;
     private evalVolumeIntervalId?: NodeJS.Timeout;
 
-    private userVolumes?: UserVolume[];
+    private userVolumes?: Map<string, UserVolume>;
+    // private userVolumes?: UserVolume[];
+
     private volumeEventIntervalId?: NodeJS.Timeout;
 
     private joinPromise?: 
@@ -454,9 +457,10 @@ export class VVRTC {
         this.startEvalVolume();
     }
 
-    private async evalAudioVolume(): Promise<UserVolume[]> {
+    private async evalAudioVolume(): Promise<Map<string, UserVolume>> {
 
-        const volumes: UserVolume[] = [];
+        // const volumes: UserVolume[] = [];
+        const volumes: Map<string, UserVolume> = new Map;
 
         this.users.forEach(async (cell, userId) => {
             if(!cell.audio?.track) {
@@ -480,9 +484,13 @@ export class VVRTC {
                             this.talkingUsers.push(userId);
                         }
                     }
-                    volumes.push({
+                    // volumes.push({
+                    //     userId,
+                    //     volume: audioLevelToVolume(src.audioLevel),
+                    // });
+                    volumes.set(userId, {
                         userId,
-                        volume: src.audioLevel,
+                        volume: audioLevelToVolumeRemote(src.audioLevel),
                     });
                 }
             });
@@ -505,10 +513,14 @@ export class VVRTC {
                             this.talkingUsers.push(userId);
                         }
                     }
-                    volumes.push({
+                    // volumes.push({
+                    //     userId: "",
+                    //     volume: audioLevelToVolume(level),
+                    // });
+                    volumes.set("", {
                         userId: "",
-                        volume: level,
-                    })
+                        volume: audioLevelToVolumeLocal(level),
+                    });
                 }
             });
         }
@@ -546,7 +558,17 @@ export class VVRTC {
     private startEvalVolume() {
         if(!this.evalVolumeIntervalId) {
             this.evalVolumeIntervalId = setInterval(async () => {
-                this.userVolumes = await this.evalAudioVolume();
+                const volumes = await this.evalAudioVolume();
+                if (this.userVolumes) {
+                    const existVolumes = this.userVolumes;
+                    volumes.forEach((newVol, key) => {
+                        const exist = existVolumes.get(key);
+                        if (exist) {
+                            newVol.volume = Math.max(newVol.volume, exist.volume);
+                        }
+                    });
+                }
+                this.userVolumes = volumes;
             }, 100);
         }
     }
@@ -2358,4 +2380,27 @@ function checkAudioSource(media?: MediaStreamTrack, view?: HTMLAudioElement): Bo
     return false;
 }
 
+function audioLevelToVolumeLocal(audioLevel: number): number {
+    return audioLevelToVolume(audioLevel, -40);
+}
 
+function audioLevelToVolumeRemote(audioLevel: number): number {
+    return audioLevelToVolume(audioLevel, -50);
+}
+
+function audioLevelToVolume(audioLevel: number, minDb: number): number {
+    if (audioLevel <= 0) return 0;
+
+    // 转换为分贝值（参考 0dB 最大）
+    const db = 20 * Math.log10(audioLevel);
+
+    // 设定一个可听下限，比如 -60dB 以下就当作静音
+    // const minDb = -60;
+    const maxDb = 0;
+
+    // 限制范围
+    const clamped = Math.max(minDb, Math.min(db, maxDb));
+
+    // 映射到 0–100
+    return Math.round(((clamped - minDb) / (maxDb - minDb)) * 100);
+}
