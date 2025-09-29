@@ -15,7 +15,7 @@ export interface JoinRoomConfig {
 	roomId: string;
     userExt?: string;
     watchMe?: boolean;
-    userTree?: [TreeOp];
+    userTree?: TreeOp[];
 }
 
 export interface TreeOp {
@@ -349,7 +349,7 @@ interface StatiState {
     lastSentAudio: LastSent[]; 
     lastRecvVideos: LastSent[]; 
     lastRecvAudios: LastSent[]; 
-    // statiVideos: [VideoStatistic]; 
+    // statiVideos: VideoStatistic[]; 
 }
 
 interface ProducerAppData extends AppData{

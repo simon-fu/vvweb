@@ -46,11 +46,11 @@ export interface OptionalOptions {
     maxReconnectTimeout?: number,
     connectTimeout?: number,
     userExt?: string,
-    userTree?: [{
+    userTree?: {
         path: string,
         value?: string,
         prune?: boolean, 
-    }],
+    }[],
 }
 
 export type ClientOptions = RequiredOptions & OptionalOptions;

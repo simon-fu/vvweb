@@ -941,8 +941,8 @@ const cfgMicOn = getQueryBool(urlParams, "mic") ?? true;
 const cfgCameraOn = getQueryBool(urlParams, "camera") ?? true; 
 const cfgEchoCancel = getQueryBool(urlParams, "echoCancel") ?? true;
 const cfgPrune = getQueryBool(urlParams, "prune") ?? true;
-const cfgUTrees: [TreeOp]|undefined = parse_query_json<[TreeOp]>("utrees");
-const cfgRTrees: [TreeOp]|undefined = parse_query_json<[TreeOp]>("rtrees");
+const cfgUTrees: TreeOp[]|undefined = parse_query_json<TreeOp[]>("utrees");
+const cfgRTrees: TreeOp[]|undefined = parse_query_json<TreeOp[]>("rtrees");
 
 
 function parse_query_json<T>(key: string) : T | undefined {
