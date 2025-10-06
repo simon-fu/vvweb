@@ -344,7 +344,7 @@ class App {
 
 		vrtc.on(VVRTC.EVENT.USER_LEAVE, ({userId}) => {
 			console.log("on USER_LEAVE: user", userId);
-			
+
 			const user = this.users.get(userId);
 			if (!user) {
 				return;
@@ -361,11 +361,6 @@ class App {
 			});
 
 			{
-				// const option = document.createElement('option');
-				// option.value = userId;
-				// option.text = `User[${userId}]`;
-				// chatToSelect.removeChild(option); // aaa 不起作用，抛异常
-
 				for (let i = 0; i < chatToSelect.length; i++) {
 					if (chatToSelect.options[i].value === userId) {
 						chatToSelect.remove(i);
@@ -731,6 +726,8 @@ class App {
 		});
 
 		this.grids.clear();
+
+		this.users.clear();
 
 		this.myTreeKv.clear();
 		makeLabelMyUsername(inputUserName.value, this.userExt);
