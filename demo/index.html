@@ -189,12 +189,19 @@
 
             <div style="margin-left: 1.5em;">
                 <details>
-                    <summary>Ext/Tree</summary>
+                    <summary>Chat/Tree</summary>
 
-                    <div class="input-row">
+                    <div class="input-row" hidden = "true">
                         <label for="input_user_ext" style = "margin-left: 1.5em;" class="row-first">User ext:</label>
                         <input id="input_user_ext" type="text" size="40" placeholder = "ext">
                         <button id="button_user_ext" style="margin-left: 1.5em;">Send</button>
+                    </div>
+
+                    <div class="input-row">
+                        <label for="input_chat" style = "margin-left: 1.5em;" class="row-first">Chat text:</label>
+                        <select id="chatTo"></select>
+                        <input id="input_chat" type="text" size="40" placeholder = "text" style="margin-left: 0.5em;">
+                        <button id="button_chat" style="margin-left: 1.5em;">Send</button>
                     </div>
 
                     <div class="input-row">

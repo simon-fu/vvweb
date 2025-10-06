@@ -105,6 +105,8 @@ export const VVRTCEvent = {
     UPDATE_USER_TREE: 'up-user-tree',
     UPDATE_ROOM_TREE: 'up-room-tree',
     ROOM_READY: 'room-ready',
+    CHAT_ROOM: 'CHAT_ROOM',
+    CHAT_USER: 'CHAT-USER',
 } as const; 
 
 export interface VVRTCStatus {
@@ -177,6 +179,15 @@ export declare interface VVRTCEventTypes {
 	}];
     [VVRTCEvent.ROOM_READY]: [{
         roomId: string;
+	}];
+    [VVRTCEvent.CHAT_ROOM]: [{
+        roomId: string;
+        from: string;
+        body: string;
+	}];
+    [VVRTCEvent.CHAT_USER]: [{
+        from: string;
+        body: string;
 	}];
 }
 
@@ -1062,6 +1073,43 @@ export class VVRTC {
             }
         });
 
+        client.on("ch-notice", async (ev: any) => {
+            // {id: 'chat:r:room01', seq: 1, body: '{"from":"u:simon1","to":"r:room01","body":"addf"}'}
+
+            const chatMsg = JSON.parse(ev.body);
+            const raw_from: string = chatMsg.from;
+
+            const USER_PREFIX: string = "u:";
+
+            if (!raw_from.startsWith(USER_PREFIX)) {
+                console.warn(`unknown chat.from [${raw_from}]`);
+                return;
+            }
+
+            const fromUserId = raw_from.substring(USER_PREFIX.length);
+
+            const raw_id: string = ev.id;
+            const ID_PREFIX_ROOM: string = "chat:r:";
+            const ID_PREFIX_USER: string = "chat:u:";
+
+            if (raw_id.startsWith(ID_PREFIX_ROOM)) {
+                const roomId = raw_id.substring(ID_PREFIX_ROOM.length);
+                this.trigger(VVRTC.EVENT.CHAT_ROOM, {
+                    roomId,
+                    from: fromUserId,
+                    body: chatMsg.body,
+                });
+            } else if (raw_id.startsWith(ID_PREFIX_USER)) {
+                this.trigger(VVRTC.EVENT.CHAT_USER, {
+                    from: fromUserId,
+                    body: chatMsg.body,
+                });
+            } else {
+                console.warn(`unknown ch notice [${ev}]`);
+                return;
+            }
+        });
+
         client.on("closed", async (ev: any) => {
             console.log("recv closed: ", ev); 
 
@@ -1859,6 +1907,43 @@ export class VVRTC {
         await this.client.updateRoomTree(req);
 
         return;
+    }
+
+    public async chatToRoom(body: string, roomId?: string) : Promise<boolean> {
+
+        if(!this.roomConfig) {
+            return false;
+        }
+
+        if (!this.client) {
+            return false;
+        }
+
+        let to: string|undefined = undefined;
+        if (roomId) {
+            to = `r:${roomId}`;
+        }
+        
+        await this.client.chat({body, to});
+
+        return true;
+    }
+
+    public async chatToUser(body: string, userId: string) : Promise<boolean> {
+
+        if(!this.roomConfig) {
+            return false;
+        }
+
+        if (!this.client) {
+            return false;
+        }
+
+        const to = `u:${userId}`
+
+        await this.client.chat({body, to});
+
+        return true;
     }
 
     public async startLocalShareScreen() {

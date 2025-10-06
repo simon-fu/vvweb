@@ -126,6 +126,31 @@ class App {
 			this.vrtc.updateUserExt(userExtInput.value);
 		});
 
+		chatButton.addEventListener('click', async () => {
+
+			const to = chatToSelect.value;
+			const body = chatInput.value;
+
+			if (!body) {
+				return;
+			}
+
+			let sent = false;
+			if(to) {
+				sent = await this.vrtc.chatToUser(body, to);
+			} else {
+				sent = await this.vrtc.chatToRoom(body);
+			}
+			
+			if (sent) {
+				const sel = chatToSelect.selectedOptions.item(0)
+				if (sel) {
+					logViewer.info(`You say to ${sel.text}: [${body}]`);
+				}
+				chatInput.value = "";
+			}
+		});
+
 		userTreeButton.addEventListener('click', async () => {
 			this.vrtc.updateUserTree({
 				path: userTreePathInput.value, 
@@ -212,6 +237,14 @@ class App {
 					vrtc.updateRoomTree(op);
 				});
 			}
+
+			{
+				chatToSelect.innerHTML = '';
+				const option = document.createElement('option');
+				option.value = "";
+				option.text = `Room[${obj.roomId}]`;
+				chatToSelect.appendChild(option);
+			}
 		});
 
 		vrtc.on(VVRTC.EVENT.ROOM_READY, async (obj) => {
@@ -242,6 +275,8 @@ class App {
 		vrtc.on(VVRTC.EVENT.USER_JOIN, ({userId, userExt}) => {
 			console.log("on USER_JOIN: user", userId, ", ext", userExt);
 			logViewer.info(`Joined user [${userId}], ext [${userExt}]`);
+
+			const old = this.users.get(userId);
 
 			const user: User = {
 				grids: [],
@@ -297,14 +332,25 @@ class App {
 				})
 			});
 
+			if(!old) {
+				// chatToSelect.innerHTML = '';
+				const option = document.createElement('option');
+				option.value = userId;
+				option.text = `User[${userId}]`;
+				chatToSelect.appendChild(option);
+			}
+
 		});
 
 		vrtc.on(VVRTC.EVENT.USER_LEAVE, ({userId}) => {
 			console.log("on USER_LEAVE: user", userId);
+			
 			const user = this.users.get(userId);
 			if (!user) {
 				return;
 			}
+
+			this.users.delete(userId);
 
 			user.grids.forEach(gridId => {
 				const grid = this.grids.get(gridId);
@@ -313,6 +359,20 @@ class App {
 					removeUserGrid(grid);
 				}
 			});
+
+			{
+				// const option = document.createElement('option');
+				// option.value = userId;
+				// option.text = `User[${userId}]`;
+				// chatToSelect.removeChild(option); // aaa 不起作用，抛异常
+
+				for (let i = 0; i < chatToSelect.length; i++) {
+					if (chatToSelect.options[i].value === userId) {
+						chatToSelect.remove(i);
+						break;
+					}
+				}
+			}
 
 			logViewer.info(`Leaved user [${userId}]`);
 		});
@@ -369,6 +429,17 @@ class App {
 			console.log("on UPDATE_ROOM_TREE: room", '[', roomId, ']', "path", '[',path,']', "value", '[',value,']', "prune", '[',prune,']');
 			logViewer.info(`Tree updated, room [${roomId}], [${path}] -> [${value}], prune [${prune}]`);
 		});
+
+		vrtc.on(VVRTC.EVENT.CHAT_ROOM, ({roomId, from, body}) => {
+			console.log("on CHAT_ROOM: room", '[', roomId, ']', "from", '[',from,']', "body", '[',body,']');
+			logViewer.info(`Chat from room [${roomId}], [${from}] say: [${body}]`);
+		});
+
+		vrtc.on(VVRTC.EVENT.CHAT_USER, ({from, body}) => {
+			console.log("on CHAT_USER: ", "from", '[',from,']', "body", '[',body,']');
+			logViewer.info(`Chat from user [${from}] say: [${body}]`);
+		});
+		
 
 		vrtc.on(VVRTC.EVENT.USER_CAMERA_ON, ({userId}) => {
 			console.log("on USER_CAMERA_ON: user", userId);
@@ -664,6 +735,7 @@ class App {
 		this.myTreeKv.clear();
 		makeLabelMyUsername(inputUserName.value, this.userExt);
 
+		chatToSelect.innerHTML = '';
 	}
 }
 
@@ -998,6 +1070,10 @@ function getQueryBool(params: URLSearchParams, key: string): boolean | undefined
 
 const userExtButton = document.getElementById('button_user_ext') as HTMLButtonElement;
 const userExtInput = document.getElementById('input_user_ext') as HTMLInputElement;
+
+const chatButton = document.getElementById('button_chat') as HTMLButtonElement;
+const chatInput = document.getElementById('input_chat') as HTMLInputElement;
+const chatToSelect = document.getElementById('chatTo') as HTMLSelectElement;
 
 const userTreeButton = document.getElementById('button_user_tree') as HTMLButtonElement;
 const userTreePathInput = document.getElementById('input_user_tree_path') as HTMLInputElement;

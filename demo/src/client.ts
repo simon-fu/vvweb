@@ -160,6 +160,12 @@ export class Client {
                 if (handled) {
                     return;
                 }
+            } else if (msg.msg_type.Ch) {
+                const ev = msg.msg_type.Ch;
+                const handled = this.trigger("ch-notice", ev);
+                if (handled) {
+                    return;
+                }
             }
 
             console.warn("Unhandle msg", msg);
@@ -689,6 +695,16 @@ export class Client {
         }, "updateRoomTree");
 
         return rsp.UpRTree;
+    }
+
+    public async chat(req: {body: string, to?: string}) : Promise<any> {
+        const rsp = await this.invoke({
+            typ: {
+                Chat: req,
+            }
+        }, "Chat");
+
+        return rsp.Chat;
     }
 }
 
