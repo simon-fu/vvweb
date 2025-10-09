@@ -1037,6 +1037,22 @@ export class VVRTC {
         this.client = client;
         this.roomConfig = args;
 
+        {
+            const device = new Device();
+            await device.load({
+                routerRtpCapabilities: ROUTER_RTP_CAPABILITIES,
+            });
+
+            if (this.client !== client) {
+                // 已经不是一个实例
+                return;
+            }
+
+            console.log("device loaded");
+            this.device = device;
+        }
+
+
         client.on("notice", async (notice: Notice) => {
             console.log("recv notice", notice);
             if (notice.body.User) {
@@ -1178,6 +1194,7 @@ export class VVRTC {
                 this.joinPromise.resolve(reason);
                 // this.joinPromise.reject(reason);
             }
+            this.joinPromise = undefined;
         }
     }
 
@@ -1214,12 +1231,13 @@ export class VVRTC {
         //     return;
         // }
 
-        const device = new Device();
-        await device.load({
-            routerRtpCapabilities: ROUTER_RTP_CAPABILITIES,
-        });
-        console.log("device loaded");
-        this.device = device;
+        // // 这里不能await，因为await 会导致其他的事件比如 USER_JOIN 先于 JOINED_ROOM
+        // const device = new Device();
+        // await device.load({
+        //     routerRtpCapabilities: ROUTER_RTP_CAPABILITIES,
+        // });
+        // console.log("device loaded");
+        // this.device = device;
 
         this.fireJoinResult();
 
@@ -1923,7 +1941,7 @@ export class VVRTC {
         if (roomId) {
             to = `r:${roomId}`;
         }
-        
+
         await this.client.chat({body, to});
 
         return true;
