@@ -41,11 +41,13 @@ export interface VideoStatistic {
     height: number;
     frameRate: number;
     bitrate: number;
+    codecName?: string;
     // videoType: VideoType;
 }
 
 export interface AudioStatistic {
     bitrate: number;
+    codecName?: string;
     // audioLevel: number;
 }
 
@@ -70,6 +72,7 @@ export interface RemoteVideoStatistic {
     frameRate: number;
     bitrate: number;
     videoType: VideoType;
+    codecName?: string;
 }
 
 export interface RemoteStatistic {
@@ -247,6 +250,7 @@ export declare interface LocalCameraConfig {
 	publish?: boolean; // 加入房间后是否要发布，默认发布
     small?: boolean; // 是否开启小流，默认不开启
     constraints?: MediaTrackConstraints;
+    codecName?: string; // H264/VP8/VP9
 	// mute?: boolean | string;
 	// option?: {
 	// 	cameraId?: string;
@@ -623,6 +627,7 @@ export class VVRTC {
 
     private async getInboundVideos(userMap: Map<string, RemoteStatistic>) : Promise<void> {
         const inboundVideos: any[] = [];
+        const codecs: Map<string, any> = new Map;
         const tasks: Promise<void>[] = []; 
 
         this.users.forEach((cell, userId) => {
@@ -636,6 +641,8 @@ export class VVRTC {
                             // console.log("consumer inbound video", stat);
                             reports.push(stat);
                             // inboundVideos.push(stat);
+                        } else if (stat.type === 'codec') {
+                            codecs.set(stat.id, stat);
                         }
                     });           
                     inboundVideos.push({userId, reports, stype: StreamType.Camera});
@@ -749,6 +756,7 @@ export class VVRTC {
                     frameRate: Math.floor((current.frames - last.frames) / (elapsed/1000)),
                     bitrate: Math.floor(((current.bytes - last.bytes) * 8) / (elapsed/1000)/1000),
                     videoType,
+                    codecName: parseCodecFromMimeType(codecs.get(stat.codecId)?.mimeType),
                 });
 
                 // console.log("current ", current, "last", last);
@@ -766,6 +774,7 @@ export class VVRTC {
 
     private async getInboundAudios(userMap: Map<string, RemoteStatistic>) : Promise<void> {
         const inboundVideos: any[] = [];
+        const codecs: Map<string, any> = new Map;
         const tasks: Promise<void>[] = []; 
 
         this.users.forEach((cell, userId) => {
@@ -779,6 +788,8 @@ export class VVRTC {
                             // console.log("consumer inbound video", stat);
                             reports.push(stat);
                             // inboundVideos.push(stat);
+                        } else if (stat.type === 'codec') {
+                            codecs.set(stat.id, stat);
                         }
                     });           
                     inboundVideos.push({userId, reports, stype: StreamType.Mic});
@@ -856,6 +867,7 @@ export class VVRTC {
 
                 userStat.audio = {
                     bitrate: Math.floor(((current.bytes - last.bytes) * 8) / (elapsed/1000)/1000),
+                    codecName: parseCodecFromMimeType(codecs.get(stat.codecId)?.mimeType),
                 };
 
                 // console.log("current ", current, "last", last);
@@ -872,6 +884,7 @@ export class VVRTC {
     private async getOutboundVideos() : Promise<VideoStatistic[]> {
 
         const outboundVideos: any[] = [];
+        const codecs: Map<string, any> = new Map;
 
         if (this.camera.producer) {
             const stats = await this.camera.producer.getStats();
@@ -881,6 +894,8 @@ export class VVRTC {
                 if (stat.type === 'outbound-rtp' && stat.kind === 'video') {
                     // console.log("producer outbound video", stat);
                     outboundVideos.push(stat);
+                } else if (stat.type === 'codec') {
+                    codecs.set(stat.id, stat);
                 }
             });
         }
@@ -934,6 +949,7 @@ export class VVRTC {
                 height: stat.frameHeight ?? 0,
                 frameRate: Math.floor((current.frames - last.frames) / (elapsed/1000)),
                 bitrate: Math.floor(((current.bytes - last.bytes) * 8) / (elapsed/1000)/1000),
+                codecName: parseCodecFromMimeType(codecs.get(stat.codecId)?.mimeType),
             });
 
         });
@@ -947,7 +963,7 @@ export class VVRTC {
     private async getOutboundAudio() : Promise<AudioStatistic|undefined> {
 
         const outbounds: any[] = [];
-
+        const codecs: Map<string, any> = new Map;
 
         if (this.mic.producer) {
             const stats = await this.mic.producer.getStats();
@@ -957,6 +973,8 @@ export class VVRTC {
                 if (stat.type === 'outbound-rtp' && stat.kind === 'audio') {
                     // console.log("producer outbound audio", stat);
                     outbounds.push(stat);
+                } else if (stat.type === 'codec') {
+                    codecs.set(stat.id, stat);
                 }
             });
         }
@@ -1003,6 +1021,7 @@ export class VVRTC {
 
             statss.push({
                 bitrate: Math.floor(((current.bytes - last.bytes) * 8) / (elapsed/1000)/1000),
+                codecName: parseCodecFromMimeType(codecs.get(stat.codecId)?.mimeType),
                 // audioLevel: 0,
             });
 
@@ -1634,14 +1653,24 @@ export class VVRTC {
 
             if (!camera.producer && camera.stream && this.producerTransport && this.device) {
                 const track = camera.stream.getVideoTracks()[0];
-                const codec = this.device.rtpCapabilities.codecs?.find((codec) => codec.mimeType.toLowerCase() === 'video/vp8')
+                const codecName = config.codecName || "vp8";
+                const mime = `video/${codecName}`; // 'video/vp8'
+                const codec = this.device.rtpCapabilities.codecs?.find((codec) => codec.mimeType.toLowerCase() === mime.toLowerCase())
+                console.log("video mime", mime, "codec", codec, "codecs", this.device.rtpCapabilities.codecs);
                 let encodings;
                 if (config.small) {
-                    encodings = [
-                        {scaleResolutionDownBy: 4, maxBitrate: 500000},
-                        // {scaleResolutionDownBy: 2, maxBitrate: 1000000},
-                        {scaleResolutionDownBy: 1, maxBitrate: 5000000}
-                    ];
+                    if(codecName.toLowerCase() === "vp9") {
+                        encodings = [
+                            { maxBitrate      : 5000000, scalabilityMode : 'L2T2_KEY'},
+                            // { maxBitrate      : 5000000, scalabilityMode : 'L3T3_KEY'},
+                        ];
+                    } else {
+                        encodings = [
+                            {scaleResolutionDownBy: 4, maxBitrate: 500000},
+                            // {scaleResolutionDownBy: 2, maxBitrate: 1000000},
+                            {scaleResolutionDownBy: 1, maxBitrate: 5000000}
+                        ];
+                    }
                 }
 
                 let appData: ProducerAppData = {
@@ -2506,4 +2535,13 @@ function audioLevelToVolume(audioLevel: number, minDb: number): number {
 
     // 映射到 0–100
     return Math.round(((clamped - minDb) / (maxDb - minDb)) * 100);
+}
+
+function parseCodecFromMimeType(mime?: string) : string {
+    if(!mime) {
+        return "Unknown";
+    }
+
+    const codec = mime.includes("/") ? mime.split("/")[1] : mime;
+    return codec;
 }

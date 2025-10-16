@@ -1,216 +1,219 @@
 export const ROUTER_RTP_CAPABILITIES: any = {
     "codecs": [
         {
+            "channels": 2,
+            "clockRate": 48000,
             "kind": "audio",
             "mimeType": "audio/opus",
-            "preferredPayloadType": 100,
-            "clockRate": 48000,
-            "channels": 2,
-            "parameters": {
-                "useinbandfec": 1
-            },
-            "rtcpFeedback": [
-                {
-                    "type": "nack",
-                    "parameter": ""
-                },
-                {
-                    "type": "transport-cc",
-                    "parameter": ""
-                }
-            ]
-        },
-        {
-            "kind": "audio",
-            "mimeType": "audio/rtx",
-            "preferredPayloadType": 101,
-            "clockRate": 48000,
-            "channels": 2,
-            "parameters": {
-                "apt": 100
-            },
-            "rtcpFeedback": []
-        },
-        {
-            "kind": "audio",
-            "mimeType": "audio/red",
-            "preferredPayloadType": 102,
-            "clockRate": 48000,
-            "channels": 2,
-            "parameters": {
-                "apt": 100
-            },
-            "rtcpFeedback": []
-        },
-        {
-            "kind": "video",
-            "mimeType": "video/VP8",
-            "preferredPayloadType": 103,
-            "clockRate": 90000,
             "parameters": {},
+            "preferredPayloadType": 100,
             "rtcpFeedback": [
                 {
-                    "type": "nack",
-                    "parameter": ""
+                    "parameter": "",
+                    "type": "nack"
                 },
                 {
-                    "type": "nack",
-                    "parameter": "pli"
+                    "parameter": "",
+                    "type": "transport-cc"
+                }
+            ]
+        },
+
+        {
+            "clockRate": 90000,
+            "kind": "video",
+            "mimeType": "video/VP9",
+            "parameters": {
+                "profile-id": 0,
+                "x-google-start-bitrate": 1000
+            },
+            "preferredPayloadType": 106,
+            "rtcpFeedback": [{
+                "parameter": "",
+                "type": "nack"
+            },
+                {
+                    "parameter": "pli",
+                    "type": "nack"
                 },
                 {
-                    "type": "ccm",
-                    "parameter": "fir"
+                    "parameter": "pli",
+                    "type": "nack"
                 },
                 {
-                    "type": "goog-remb",
-                    "parameter": ""
+                    "parameter": "fir",
+                    "type": "ccm"
                 },
                 {
-                    "type": "transport-cc",
-                    "parameter": ""
+                    "parameter": "",
+                    "type": "goog-remb"
+                },
+                {
+                    "parameter": "",
+                    "type": "transport-cc"
                 }
             ]
         },
         {
+            "clockRate": 90000,
             "kind": "video",
             "mimeType": "video/rtx",
-            "preferredPayloadType": 104,
-            "clockRate": 90000,
             "parameters": {
-                "apt": 103
+                "apt": 106
             },
+            "preferredPayloadType": 107,
             "rtcpFeedback": []
         },
+
         {
-            "kind": "video",
-            "mimeType": "video/flexfec-03",
-            "preferredPayloadType": 105,
             "clockRate": 90000,
+            "kind": "video",
+            "mimeType": "video/H264",
             "parameters": {
-                "apt": 103
+                "level-asymmetry-allowed": 1,
+                "packetization-mode": 1,
+                "profile-level-id": "42001f",
+                "x-google-start-bitrate": 1000
             },
+            "preferredPayloadType": 109,
+            "rtcpFeedback": [{
+                "parameter": "",
+                "type": "nack"
+            },
+                {
+                    "parameter": "pli",
+                    "type": "nack"
+                },
+                {
+                    "parameter": "fir",
+                    "type": "ccm"
+                },
+                {
+                    "parameter": "",
+                    "type": "goog-remb"
+                },
+                {
+                    "parameter": "",
+                    "type": "transport-cc"
+                }
+            ]
+        },
+        {
+            "clockRate": 90000,
+            "kind": "video",
+            "mimeType": "video/rtx",
+            "parameters": {
+                "apt": 109
+            },
+            "preferredPayloadType": 110,
             "rtcpFeedback": []
         }
     ],
     "headerExtensions": [
         {
+            "direction": "sendrecv",
             "kind": "audio",
-            "uri": "urn:ietf:params:rtp-hdrext:sdes:mid",
-            "preferredId": 1,
             "preferredEncrypt": false,
-            "direction": "sendrecv"
+            "preferredId": 1,
+            "uri": "urn:ietf:params:rtp-hdrext:sdes:mid"
         },
         {
+            "direction": "sendrecv",
             "kind": "video",
-            "uri": "urn:ietf:params:rtp-hdrext:sdes:mid",
-            "preferredId": 1,
             "preferredEncrypt": false,
-            "direction": "sendrecv"
+            "preferredId": 1,
+            "uri": "urn:ietf:params:rtp-hdrext:sdes:mid"
         },
         {
+            "direction": "recvonly",
             "kind": "video",
-            "uri": "urn:ietf:params:rtp-hdrext:sdes:rtp-stream-id",
+            "preferredEncrypt": false,
             "preferredId": 2,
-            "preferredEncrypt": false,
-            "direction": "recvonly"
+            "uri": "urn:ietf:params:rtp-hdrext:sdes:rtp-stream-id"
         },
         {
+            "direction": "recvonly",
             "kind": "video",
-            "uri": "urn:ietf:params:rtp-hdrext:sdes:repaired-rtp-stream-id",
+            "preferredEncrypt": false,
             "preferredId": 3,
-            "preferredEncrypt": false,
-            "direction": "recvonly"
+            "uri": "urn:ietf:params:rtp-hdrext:sdes:repaired-rtp-stream-id"
         },
         {
+            "direction": "sendrecv",
             "kind": "audio",
-            "uri": "http://www.webrtc.org/experiments/rtp-hdrext/abs-send-time",
-            "preferredId": 4,
             "preferredEncrypt": false,
-            "direction": "sendrecv"
+            "preferredId": 4,
+            "uri": "http://www.webrtc.org/experiments/rtp-hdrext/abs-send-time"
         },
         {
+            "direction": "sendrecv",
             "kind": "video",
-            "uri": "http://www.webrtc.org/experiments/rtp-hdrext/abs-send-time",
-            "preferredId": 4,
             "preferredEncrypt": false,
-            "direction": "sendrecv"
+            "preferredId": 4,
+            "uri": "http://www.webrtc.org/experiments/rtp-hdrext/abs-send-time"
         },
         {
+            "direction": "recvonly",
             "kind": "audio",
-            "uri": "http://www.ietf.org/id/draft-holmer-rmcat-transport-wide-cc-extensions-01",
-            "preferredId": 5,
             "preferredEncrypt": false,
-            "direction": "sendrecv"
+            "preferredId": 5,
+            "uri": "http://www.ietf.org/id/draft-holmer-rmcat-transport-wide-cc-extensions-01"
         },
         {
+            "direction": "sendrecv",
             "kind": "video",
-            "uri": "http://www.ietf.org/id/draft-holmer-rmcat-transport-wide-cc-extensions-01",
-            "preferredId": 5,
             "preferredEncrypt": false,
-            "direction": "sendrecv"
+            "preferredId": 5,
+            "uri": "http://www.ietf.org/id/draft-holmer-rmcat-transport-wide-cc-extensions-01"
         },
         {
+            "direction": "sendrecv",
             "kind": "video",
-            "uri": "http://tools.ietf.org/html/draft-ietf-avtext-framemarking-07",
+            "preferredEncrypt": false,
             "preferredId": 6,
-            "preferredEncrypt": false,
-            "direction": "sendrecv"
+            "uri": "http://tools.ietf.org/html/draft-ietf-avtext-framemarking-07"
         },
         {
+            "direction": "sendrecv",
             "kind": "video",
-            "uri": "urn:ietf:params:rtp-hdrext:framemarking",
+            "preferredEncrypt": false,
             "preferredId": 7,
-            "preferredEncrypt": false,
-            "direction": "sendrecv"
+            "uri": "urn:ietf:params:rtp-hdrext:framemarking"
         },
         {
+            "direction": "sendrecv",
             "kind": "audio",
-            "uri": "urn:ietf:params:rtp-hdrext:ssrc-audio-level",
+            "preferredEncrypt": false,
             "preferredId": 10,
-            "preferredEncrypt": false,
-            "direction": "sendrecv"
+            "uri": "urn:ietf:params:rtp-hdrext:ssrc-audio-level"
         },
         {
+            "direction": "sendrecv",
             "kind": "video",
-            "uri": "urn:3gpp:video-orientation",
+            "preferredEncrypt": false,
             "preferredId": 11,
-            "preferredEncrypt": false,
-            "direction": "sendrecv"
+            "uri": "urn:3gpp:video-orientation"
         },
         {
+            "direction": "sendrecv",
             "kind": "video",
-            "uri": "urn:ietf:params:rtp-hdrext:toffset",
+            "preferredEncrypt": false,
             "preferredId": 12,
-            "preferredEncrypt": false,
-            "direction": "sendrecv"
+            "uri": "urn:ietf:params:rtp-hdrext:toffset"
         },
         {
+            "direction": "sendrecv",
             "kind": "audio",
-            "uri": "http://www.webrtc.org/experiments/rtp-hdrext/abs-capture-time",
+            "preferredEncrypt": false,
             "preferredId": 13,
-            "preferredEncrypt": false,
-            "direction": "sendrecv"
+            "uri": "http://www.webrtc.org/experiments/rtp-hdrext/abs-capture-time"
         },
         {
+            "direction": "sendrecv",
             "kind": "video",
-            "uri": "http://www.webrtc.org/experiments/rtp-hdrext/abs-capture-time",
+            "preferredEncrypt": false,
             "preferredId": 13,
-            "preferredEncrypt": false,
-            "direction": "sendrecv"
-        },
-        {
-            "kind": "audio",
-            "uri": "Hx-Private-AudioRoom-Stream",
-            "preferredId": 14,
-            "preferredEncrypt": false,
-            "direction": "sendrecv"
-        },
-        {
-            "kind": "video",
-            "uri": "Hx-Private-AudioRoom-Stream",
-            "preferredId": 14,
-            "preferredEncrypt": false,
-            "direction": "sendrecv"
+            "uri": "http://www.webrtc.org/experiments/rtp-hdrext/abs-capture-time"
         }
     ]
-}; 
+}

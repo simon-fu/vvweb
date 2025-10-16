@@ -567,11 +567,12 @@ class App {
 			if (overlay) {
 				let text = '';
 				stats.localStatistics.video.forEach((report) => {
-					text = `${text}V: ${report.width}x${report.height}/${report.frameRate} fps/${report.bitrate} Kbps\n`;
+					text = `${text}V: ${report.width}x${report.height}/${report.frameRate} fps/${report.codecName}/${report.bitrate} Kbps\n`;
 				});
 
 				if (stats.localStatistics.audio) {
-					text = `${text}A: ${stats.localStatistics.audio.bitrate} Kbps\n`;
+					const report = stats.localStatistics.audio;
+					text = `${text}A: ${report.codecName}/${report.bitrate} Kbps\n`;
 				}
 				
 				overlay.textContent = text;
@@ -592,17 +593,20 @@ class App {
 							case VideoType.Camera: index = 0; break;
 							case VideoType.Screen: index = 1; break;
 						}
-						texts[index] = `${texts[index]}V: ${report.width}x${report.height}/${report.frameRate} fps/${report.bitrate} Kbps\n`;
+						texts[index] = `${texts[index]}V: ${report.width}x${report.height}/${report.frameRate} fps/${report.codecName}/${report.bitrate} Kbps\n`;
 					});
 				}
 
-				const audio = remote.audio;
-				if (audio) {
-					const grid = this.grids.get(remote.userId)
-					if (grid) {
-						texts[0] = `${texts[0]}A: ${audio.bitrate} Kbps\n`
+				{
+					const report = remote.audio;
+					if (report) {
+						const grid = this.grids.get(remote.userId)
+						if (grid) {
+							texts[0] = `${texts[0]}A: ${report.codecName}/${report.bitrate} Kbps\n`
+						}
 					}
 				}
+
 
 				if (texts[0].length > 0) {
 					const grid = this.grids.get(remote.userId)
@@ -654,6 +658,7 @@ class App {
 				view: this.sendPreview,
 				small: inputLocalSmall.checked,
 				constraints: {deviceId: videoSourceSelect.value ? {exact: videoSourceSelect.value} : undefined},
+				codecName: cfgVideoCodecName,
 			});
 		} else {
 			vrtc.closeLocalCamera();
@@ -1010,6 +1015,7 @@ const cfgMicOn = getQueryBool(urlParams, "mic") ?? true;
 const cfgCameraOn = getQueryBool(urlParams, "camera") ?? true; 
 const cfgEchoCancel = getQueryBool(urlParams, "echoCancel") ?? true;
 const cfgPrune = getQueryBool(urlParams, "prune") ?? true;
+const cfgVideoCodecName = urlParams.get("vcodec") ?? undefined;
 const cfgUTrees: TreeOp[]|undefined = parse_query_json<TreeOp[]>("utrees");
 const cfgRTrees: TreeOp[]|undefined = parse_query_json<TreeOp[]>("rtrees");
 
@@ -1045,6 +1051,7 @@ camera = Enable camera, default true.
 echoCancel - Enable audio echo cancellation, default true.
 small - Enable small video stream, default true.
 prune - Enable prune when set user/room tree, default true.
+vcodec- Video codec, e.g. H264.
 utrees - Inital user tree array, e.g. [{"path":"query.k1","value":"qk1"}].
 rtrees - Inital user tree array, see utrees.
 `;
