@@ -108,8 +108,8 @@ export const VVRTCEvent = {
     UPDATE_USER_TREE: 'up-user-tree',
     UPDATE_ROOM_TREE: 'up-room-tree',
     ROOM_READY: 'room-ready',
-    CHAT_ROOM: 'CHAT_ROOM',
-    CHAT_USER: 'CHAT-USER',
+    CHAT_ROOM: 'chat-room',
+    CHAT_USER: 'chat-user',
 } as const; 
 
 export interface VVRTCStatus {
@@ -122,6 +122,11 @@ export declare interface VVRTCEventTypes {
 	[VVRTCEvent.USER_JOIN]: [{
 		userId: string;
         userExt?: string;
+        userTree: {
+            path: string;
+            value?: string;
+            prune: boolean;
+        }[];
 	}];
 	[VVRTCEvent.USER_LEAVE]: [{
 		userId: string;
@@ -181,7 +186,7 @@ export declare interface VVRTCEventTypes {
         prune: boolean; 
 	}];
     [VVRTCEvent.ROOM_READY]: [{
-        roomId: string;
+        // roomId: string;
 	}];
     [VVRTCEvent.CHAT_ROOM]: [{
         roomId: string;
@@ -294,7 +299,7 @@ interface UserCell {
 }
 
 interface UserVideo {
-    view?: HTMLVideoElement, // TODO: 去掉，使用 config.view
+    view?: HTMLVideoElement, // TODO: 去掉，使用 config.view。不用去掉了，因为config里的view是待使用的view，这里的view是实际使用的view
     track?: ConsumeTrack,
     config: UserVideoConfig,
 }
@@ -388,6 +393,14 @@ export class VVRTC {
     private device?: Device;
     private client?: Client;
     private users: Map<string, UserCell>;
+    private pendingUsers: Map<string, {
+        user: User, 
+        tree: {
+            path: string;
+            value?: string;
+            prune: boolean;
+        }[],
+    }>;
     private camera: LocalCamera;
     private screen: LocalShareScreen;
     private mic: LocalMic;
@@ -419,6 +432,7 @@ export class VVRTC {
         this.url = options.url || "ws://127.0.0.1:11080/ws";
         this.emitter = new VVRTCEmitter();
         this.users = new Map;
+        this.pendingUsers = new Map;
         this.camera = {};
         this.screen = {};
         this.mic = {};
@@ -1071,20 +1085,40 @@ export class VVRTC {
             this.device = device;
         }
 
+        client.on("user-init", (ev: {id: string}) => {
+            this.pendingUsers.set(ev.id, {
+                user: {
+                    id: ev.id,
+                    online: true,
+                    streams: {},
+                },
+                tree: [],
+            });
+        });
 
         client.on("notice", async (notice: Notice) => {
-            console.log("recv notice", notice);
+            // console.log("recv notice", notice);
             if (notice.body.User) {
                 const user: User = notice.body.User;
                 await this.updateUser(user);
             } else if (notice.body.UTree) {
                 let obj = notice.body.UTree;
-                this.trigger(VVRTC.EVENT.UPDATE_USER_TREE, {
-                    userId: obj.id,
-                    value: obj.value,
-                    path: obj.path,
-                    prune: obj.prune??false,
-                });
+                const slot = this.pendingUsers.get(obj.id);
+                if (slot) {
+                    slot.tree.push({
+                        value: obj.value,
+                        path: obj.path,
+                        prune: obj.prune??false,
+                    });
+                } else {
+                    this.trigger(VVRTC.EVENT.UPDATE_USER_TREE, {
+                        userId: obj.id,
+                        value: obj.value,
+                        path: obj.path,
+                        prune: obj.prune??false,
+                    });
+                }
+
             } else if (notice.body.RTree) {
                 let obj = notice.body.RTree;
                 this.trigger(VVRTC.EVENT.UPDATE_ROOM_TREE, {
@@ -1103,18 +1137,93 @@ export class VVRTC {
                 this.trigger(VVRTC.EVENT.ROOM_READY, {
                     roomId: ev.Room.id,
                 });
-            } else {
+            } else if (ev.User) {
+
+                const slot = this.pendingUsers.get(ev.User.id);
+
+                if (slot) {
+                    this.pendingUsers.delete(slot.user.id);
+                    if (slot.user.online) {
+                        
+                        const newUser = slot.user;
+
+                        const cell = {
+                            user: {
+                                id: newUser.id,
+                                online: true,
+                                streams: {},
+                                ext: newUser.ext,
+                            },
+                        };
+                        
+                        this.users.set(newUser.id, cell);
+
+                        this.trigger(VVRTC.EVENT.USER_JOIN, {
+                            userId: slot.user.id,
+                            userExt: slot.user.ext,
+                            userTree: slot.tree,
+                        });
+
+                        this.checkUserEvent(cell, newUser);
+                    }
+                }
+            } 
+            else {
                 console.warn("unknown ready notice", ev);
             }
         });
 
-        client.on("ch-notice", async (ev: any) => {
+        // client.on("ch-notice", async (ev: any) => {
+        //     // {id: 'chat:r:room01', seq: 1, body: '{"from":"u:simon1","to":"r:room01","body":"addf"}'}
+
+        //     const chatMsg = JSON.parse(ev.body);
+        //     const raw_from: string = chatMsg.from;
+        //     const raw_to: string = chatMsg.to;
+
+        //     const USER_PREFIX: string = `u${CHAT_DIV}`;
+        //     const ROOM_PREFIX: string = `r${CHAT_DIV}`;
+
+        //     if (!raw_from.startsWith(USER_PREFIX)) {
+        //         console.warn(`unknown chat.from [${raw_from}]`);
+        //         return;
+        //     }
+
+        //     const fromUserId = raw_from.substring(USER_PREFIX.length);
+
+        //     // const raw_ch_id: string = ev.id;
+        //     // const ID_PREFIX_ROOM: string = "chat:r:";
+        //     // const ID_PREFIX_USER: string = "chat:u:";
+        //     // const ID_PREFIX_ROOM: string = `c${CHAT_DIV}r${CHAT_DIV}`;
+        //     // const ID_PREFIX_USER: string = `c${CHAT_DIV}u${CHAT_DIV}`;
+
+        //     if (raw_to.startsWith(ROOM_PREFIX)) {
+        //         const roomId = raw_to.substring(ROOM_PREFIX.length);
+        //         this.trigger(VVRTC.EVENT.CHAT_ROOM, {
+        //             roomId,
+        //             from: fromUserId,
+        //             body: chatMsg.body,
+        //         });
+        //     } else if (raw_to.startsWith(USER_PREFIX)) {
+        //         this.trigger(VVRTC.EVENT.CHAT_USER, {
+        //             from: fromUserId,
+        //             body: chatMsg.body,
+        //         });
+        //     } else {
+        //         console.warn(`unknown ch notice [${ev}]`);
+        //         return;
+        //     }
+        // });
+
+        client.on("chat", async (ev: any) => {
             // {id: 'chat:r:room01', seq: 1, body: '{"from":"u:simon1","to":"r:room01","body":"addf"}'}
 
-            const chatMsg = JSON.parse(ev.body);
+            // const chatMsg = JSON.parse(ev.body);
+            const chatMsg = ev;
             const raw_from: string = chatMsg.from;
+            const raw_to: string = chatMsg.to;
 
-            const USER_PREFIX: string = "u:";
+            const USER_PREFIX: string = `u${CHAT_DIV}`;
+            const ROOM_PREFIX: string = `r${CHAT_DIV}`;
 
             if (!raw_from.startsWith(USER_PREFIX)) {
                 console.warn(`unknown chat.from [${raw_from}]`);
@@ -1123,24 +1232,26 @@ export class VVRTC {
 
             const fromUserId = raw_from.substring(USER_PREFIX.length);
 
-            const raw_id: string = ev.id;
-            const ID_PREFIX_ROOM: string = "chat:r:";
-            const ID_PREFIX_USER: string = "chat:u:";
+            // const raw_ch_id: string = ev.id;
+            // const ID_PREFIX_ROOM: string = "chat:r:";
+            // const ID_PREFIX_USER: string = "chat:u:";
+            // const ID_PREFIX_ROOM: string = `c${CHAT_DIV}r${CHAT_DIV}`;
+            // const ID_PREFIX_USER: string = `c${CHAT_DIV}u${CHAT_DIV}`;
 
-            if (raw_id.startsWith(ID_PREFIX_ROOM)) {
-                const roomId = raw_id.substring(ID_PREFIX_ROOM.length);
+            if (raw_to.startsWith(ROOM_PREFIX)) {
+                const roomId = raw_to.substring(ROOM_PREFIX.length);
                 this.trigger(VVRTC.EVENT.CHAT_ROOM, {
                     roomId,
                     from: fromUserId,
                     body: chatMsg.body,
                 });
-            } else if (raw_id.startsWith(ID_PREFIX_USER)) {
+            } else if (raw_to.startsWith(USER_PREFIX)) {
                 this.trigger(VVRTC.EVENT.CHAT_USER, {
                     from: fromUserId,
                     body: chatMsg.body,
                 });
             } else {
-                console.warn(`unknown ch notice [${ev}]`);
+                console.warn(`unknown chat [${ev}]`);
                 return;
             }
         });
@@ -1265,7 +1376,7 @@ export class VVRTC {
         //     console.log("opened session response  ", rsp);
         //     const status: VVRTCStatus = rsp.status ?? {code: 0, reason: ""};
         //     status.from = "server";
-        //     this.fireJoinResult(status.code == 0 ? undefined : status);
+        //     this.fireJoinResult(status.code === 0 ? undefined : status);
         //     if(status.code !== 0) {
         //         await this.cleanUp();
         //         this.trigger(VVRTC.EVENT.CLOSED, status);
@@ -1377,7 +1488,7 @@ export class VVRTC {
 
                 try {
                     let stream_id = info.streamId;	
-                    // if (kind == "audio") {
+                    // if (kind === "audio") {
                     //     stream_id = "audio-stream";
                     //     // gState.audio_stream_id = stream_id;
                     // } else {
@@ -1863,11 +1974,11 @@ export class VVRTC {
 
         cell.video.view = config.view;
 
-        if (cell.video.track) {
-            // 已经订阅过了
-            checkVideoSource(cell.video.track.consumer.track, cell.video.view);
-            return;
-        }
+        // if (cell.video.track) {
+        //     // 已经订阅过了
+        //     checkVideoSource(cell.video.track.consumer.track, cell.video.view);
+        //     return;
+        // }
 
         this.tryWatchUserCamera(cell);
     }
@@ -1888,7 +1999,28 @@ export class VVRTC {
             return undefined;
         }
 
-        await this.client.updateConsumeVideoLayer(this.roomConfig.roomId, cell.video.track.consumer.id, config.option?.small);
+        if (config.view && !Object.is(cell.video.view, config.view)) {
+            if (cell.video.view) {
+                cell.video.view.srcObject = null;
+            }
+            cell.video.view = config.view;
+            checkVideoSource(cell.video.track.consumer.track, cell.video.view);
+        }
+
+        {
+            const newSmall = config.option?.small;
+            const oldSmall = cell.video.config.option?.small;
+
+            if (cell.video.config.option) {
+                cell.video.config.option.small = newSmall;
+            } else {
+                cell.video.config.option = { small : newSmall };
+            }
+
+            if (newSmall !== oldSmall) {
+                await this.client.updateConsumeVideoLayer(this.roomConfig.roomId, cell.video.track.consumer.id, newSmall);
+            }
+        }
 
         return;
     }
@@ -1968,7 +2100,7 @@ export class VVRTC {
 
         let to: string|undefined = undefined;
         if (roomId) {
-            to = `r:${roomId}`;
+            to = `r.${roomId}`;
         }
 
         await this.client.chat({body, to});
@@ -1986,7 +2118,7 @@ export class VVRTC {
             return false;
         }
 
-        const to = `u:${userId}`
+        const to = `u${CHAT_DIV}${userId}`
 
         await this.client.chat({body, to});
 
@@ -2102,7 +2234,7 @@ export class VVRTC {
 
     private async tryWatchUserCamera(cell: UserCell) {
         const found = Object.entries(cell.user.streams)
-        .find(([_key, stream]) => stream.stype == StreamType.Camera);
+        .find(([_key, stream]) => stream.stype === StreamType.Camera);
 
         if(!found) {
             // throw new Error(`Not found video stream for user ${config.userId}`);
@@ -2113,7 +2245,7 @@ export class VVRTC {
             return;
         }
 
-        if (!cell.video?.track) {
+        if (!cell.video.track) {
             const [streamId, videoStream] = found;
             const track = await this.subscribeStream(streamId, videoStream, cell.video.config.option?.small);
             if (!track) {
@@ -2142,7 +2274,7 @@ export class VVRTC {
 
     private async tryWatchUserScreen(cell: UserCell) {
         const found = Object.entries(cell.user.streams)
-        .find(([_key, stream]) => stream.stype == StreamType.Screen);
+        .find(([_key, stream]) => stream.stype === StreamType.Screen);
 
         if(!found) {
             // throw new Error(`Not found video stream for user ${config.userId}`);
@@ -2173,7 +2305,7 @@ export class VVRTC {
         // }
 
         const found = Object.entries(cell.user.streams)
-        .find(([_key, stream]) => stream.stype == StreamType.Mic);
+        .find(([_key, stream]) => stream.stype === StreamType.Mic);
 
         if(!found) {
             // throw new Error(`Not found audio stream for user ${config.userId}`);
@@ -2250,6 +2382,7 @@ export class VVRTC {
         if(cell) {
             // 同一个用户， 不同的实例
             if(newUser.inst_id !== cell.user.inst_id) {
+                this.users.delete(newUser.id);
                 this.triggerUserLeave(cell);
                 cell = undefined;
             }
@@ -2260,21 +2393,28 @@ export class VVRTC {
                 return;
             }
 
-            cell = {
-                user: {
-                    id: newUser.id,
-                    online: true,
-                    streams: {},
-                    ext: newUser.ext,
-                },
-            };
-            
-            this.users.set(newUser.id, cell);
+            const puser = this.pendingUsers.get(newUser.id);
+            if(puser) {
+                puser.user = newUser;
+            }
 
-            this.trigger(VVRTC.EVENT.USER_JOIN, {
-                userId: newUser.id,
-                userExt: newUser.ext,
-            });
+            return ;
+
+            // cell = {
+            //     user: {
+            //         id: newUser.id,
+            //         online: true,
+            //         streams: {},
+            //         ext: newUser.ext,
+            //     },
+            // };
+            
+            // this.users.set(newUser.id, cell);
+
+            // this.trigger(VVRTC.EVENT.USER_JOIN, {
+            //     userId: newUser.id,
+            //     userExt: newUser.ext,
+            // });
 
         } 
 
@@ -2315,10 +2455,10 @@ export class VVRTC {
                 const stream = oldUser.streams[streamId];
                 console.log("remove stream, user", newUser.id, stream);
 
-                if (stream.stype == StreamType.Camera) {
+                if (stream.stype === StreamType.Camera) {
                     let video = cell.video;
                     if (video) {
-                        if (video.track?.producerId == stream.producer_id) {
+                        if (video.track?.producerId === stream.producer_id) {
                             console.log("remove video track, producer_id", stream.producer_id);
                             video.track = undefined;
 
@@ -2331,9 +2471,9 @@ export class VVRTC {
                     this.trigger(VVRTC.EVENT.USER_CAMERA_OFF, {
                         userId: newUser.id,
                     });
-                } else if (stream.stype == StreamType.Mic) {
+                } else if (stream.stype === StreamType.Mic) {
                     if (cell.audio) {
-                        if (cell.audio.track?.producerId == stream.producer_id) {
+                        if (cell.audio.track?.producerId === stream.producer_id) {
                             console.log("remove audio track, producer_id", stream.producer_id);
                             cell.audio.track = undefined;
 
@@ -2342,10 +2482,10 @@ export class VVRTC {
                             }
                         }
                     }
-                } else if (stream.stype == StreamType.Screen) {
+                } else if (stream.stype === StreamType.Screen) {
                     let video = cell.screen;
                     if (video) {
-                        if (video.track?.producerId == stream.producer_id) {
+                        if (video.track?.producerId === stream.producer_id) {
                             console.log("remove video track, producer_id", stream.producer_id);
                             video.track = undefined;
 
@@ -2371,18 +2511,18 @@ export class VVRTC {
                 
                 // 触发添加事件
                 console.log("add stream, user", newUser.id, newStream);
-                if (newStream.stype == StreamType.Camera) {
+                if (newStream.stype === StreamType.Camera) {
                     this.trigger(VVRTC.EVENT.USER_CAMERA_ON, {
                         userId: newUser.id,
                     });
-                } else if (newStream.stype == StreamType.Mic) {
+                } else if (newStream.stype === StreamType.Mic) {
                     if (!newStream.muted) {
                         this.trigger(VVRTC.EVENT.USER_MIC_ON, {
                             userId: newUser.id,
                         });
                     }
                     this.tryListenUserAudio(cell);
-                } else if (newStream.stype == StreamType.Screen) {
+                } else if (newStream.stype === StreamType.Screen) {
                     this.trigger(VVRTC.EVENT.USER_SCREEN_ON, {
                         userId: newUser.id,
                     });
@@ -2394,7 +2534,7 @@ export class VVRTC {
 
                 const oldStream = oldUser.streams[streamId];
                 if (oldStream.muted != newStream.muted) {
-                    if (newStream.stype == StreamType.Mic) {
+                    if (newStream.stype === StreamType.Mic) {
                         if (!newStream.muted) {
                             this.trigger(VVRTC.EVENT.USER_MIC_ON, {
                                 userId: newUser.id,
@@ -2462,11 +2602,13 @@ export class VVRTC {
 }
 
 // function mediasoup_kind(kind: number): 'audio' | 'video' {
-// 	return kind == MKind.Audio ? "audio" : "video"
+// 	return kind === MKind.Audio ? "audio" : "video"
 // }
 
+const CHAT_DIV = '.';
+
 function mediasoup_kind(stype: number): 'audio' | 'video' {
-	// return kind == MKind.Audio ? "audio" : "video"
+	// return kind === MKind.Audio ? "audio" : "video"
     switch (stype) {
         case StreamType.Mic:
             return "audio";

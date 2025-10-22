@@ -191,6 +191,7 @@ class App {
 					view: this.sendPreview,
 					small: inputLocalSmall.checked,
 					constraints: {deviceId: videoSourceSelect.value ? {exact: videoSourceSelect.value} : undefined},
+					codecName: cfgVideoCodecName,
 				});
 			} else {
 				vrtc.closeLocalCamera();
@@ -249,7 +250,8 @@ class App {
 
 		vrtc.on(VVRTC.EVENT.ROOM_READY, async (obj) => {
 			console.log("on ROOM_READY: ", obj);
-			logViewer.info(`Room ready [${obj.roomId}]`);
+			logViewer.info(`Room ready`);
+			// logViewer.info(`Room ready [${obj.roomId}]`);
 		});
 
 		vrtc.on(VVRTC.EVENT.CLOSED, async (obj) => {
@@ -272,9 +274,10 @@ class App {
 			logViewer.info(`Reconnect session. event [${JSON.stringify(obj)}]`);
 		});
 
-		vrtc.on(VVRTC.EVENT.USER_JOIN, ({userId, userExt}) => {
-			console.log("on USER_JOIN: user", userId, ", ext", userExt);
-			logViewer.info(`Joined user [${userId}], ext [${userExt}]`);
+		vrtc.on(VVRTC.EVENT.USER_JOIN, ({userId, userExt, userTree}) => {
+			console.log("on USER_JOIN: user", userId, ", ext", userExt, ", tree", userTree);
+			const userTreeStr = JSON.stringify(userTree);
+			logViewer.info(`Joined user [${userId}], ext [${userExt}], tree ${userTreeStr}`);
 
 			const old = this.users.get(userId);
 
@@ -1051,7 +1054,7 @@ camera = Enable camera, default true.
 echoCancel - Enable audio echo cancellation, default true.
 small - Enable small video stream, default true.
 prune - Enable prune when set user/room tree, default true.
-vcodec- Video codec, e.g. H264.
+vcodec- Prefer video codec, e.g. vp8, vp9, h264.
 utrees - Inital user tree array, e.g. [{"path":"query.k1","value":"qk1"}].
 rtrees - Inital user tree array, see utrees.
 `;

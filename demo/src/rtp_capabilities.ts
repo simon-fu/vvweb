@@ -20,6 +20,56 @@ export const ROUTER_RTP_CAPABILITIES: any = {
         },
 
         {
+            "kind": "video",
+            "mimeType": "video/VP8",
+            "preferredPayloadType": 103,
+            "clockRate": 90000,
+            "parameters": {},
+            "rtcpFeedback": [
+                {
+                    "type": "nack",
+                    "parameter": ""
+                },
+                {
+                    "type": "nack",
+                    "parameter": "pli"
+                },
+                {
+                    "type": "ccm",
+                    "parameter": "fir"
+                },
+                {
+                    "type": "goog-remb",
+                    "parameter": ""
+                },
+                {
+                    "type": "transport-cc",
+                    "parameter": ""
+                }
+            ]
+        },
+        {
+            "kind": "video",
+            "mimeType": "video/rtx",
+            "preferredPayloadType": 104,
+            "clockRate": 90000,
+            "parameters": {
+                "apt": 103
+            },
+            "rtcpFeedback": []
+        },
+        {
+            "kind": "video",
+            "mimeType": "video/flexfec-03",
+            "preferredPayloadType": 105,
+            "clockRate": 90000,
+            "parameters": {
+                "apt": 103
+            },
+            "rtcpFeedback": []
+        },
+
+        {
             "clockRate": 90000,
             "kind": "video",
             "mimeType": "video/VP9",
