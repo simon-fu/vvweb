@@ -1650,7 +1650,8 @@ export class VVRTC {
             console.log("check camera updated", this.camera.updated);
             this.camera.updated = undefined;
             // await this.checkCameraOnce();
-
+            
+            try
             {
                 const config = this.camera.config;
                 
@@ -1663,6 +1664,10 @@ export class VVRTC {
                     await this.checkCameraOn(config);
                     this.camera.active = config;
                 }
+            } catch (err) {
+                console.warn("checkCamera but error", err, ", config", this.camera.config);
+                this.camera.checking = false;
+                throw err;
             }
         } 
 
