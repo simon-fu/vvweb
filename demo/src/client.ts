@@ -80,7 +80,9 @@ export class Client {
     }>;
     private msgIdCounter: number;
     private sessionId?: string;
-    private ackSeq: number = 0;
+    // private ackSeq: number = 0;
+    private recvSn: number = 0;
+    private sentAckSn: number = 0;
     
 
 
@@ -108,46 +110,69 @@ export class Client {
         
         console.log("got msg", event.data);
 
-        const msg = JSON.parse(event.data);
+        const packet = JSON.parse(event.data);
 
-        if (msg.msg_type.Response) {
+        if (packet.sn) {
+            const sn: number = packet.sn;
+            if (sn > this.recvSn) {
+                this.recvSn = sn;
 
-            // {"msg_type":{"Response":{"status":null,"msg_id":1,"response_type":{"OpenSessionResponse":{}}}}}
+                const ack = this.getSendAck();
+                if (ack && this.ws) {
+                    this.ws.send(JSON.stringify({
+                        ack,
+                    }));
+                }
+            } 
+        }
 
-            const { msg_id } = msg.msg_type.Response;
+
+        if (packet.typ === PacketType.Response) {
+        // if (msg.msg_type.Response) {
+
+            // // {"msg_type":{"Response":{"status":null,"msg_id":1,"typ":{"OpenSessionResponse":{}}}}}
+
+            // const response = msg.msg_type.Response;
+            // const msg_id = response.msg_id;
+            // // const { msg_id } = msg.msg_type.Response;
+
+            const response = JSON.parse(packet.body);
+            const msg_id = packet.ack;
         
             const pending = this.pendingRequests.get(msg_id);
             if (!pending) {
-                console.warn("Not found request", msg.msg_type.Response);
+                console.warn("Not found request", response);
                 return;
             }
             
             this.pendingRequests.delete(msg_id);
 
-            const status = msg.msg_type.Response.status;
+            const status = response.status;
 
-            if (status == null || status.code === 0) {
-                pending.resolve(msg.msg_type.Response.response_type);
+            if (status === null || status.code === 0) {
+                pending.resolve(response.typ);
             } else {
                 console.error("response status:", status);
                 pending.reject(new StatusError(status))
             }
 
-        } else {
+        } else if (packet.typ === PacketType.Push0 || packet.typ === PacketType.Push1 || packet.typ === PacketType.Push2) {
+            const push = JSON.parse(packet.body);
+            const pushType = push.typ;
 
-            if (msg.msg_type.Notice) {
-                const notice = msg.msg_type.Notice;
-                const body = JSON.parse(notice.json);
-                delete notice.json;
-                notice.body = body;
-                this.roomCursors[notice.room_id] = notice.seq;
-                console.log("recv notice", notice);
-                const handled = this.trigger("notice", notice);
-                if (handled) {
-                    return;
-                }
-            } else if (msg.msg_type.ClosedNotice) {
-                const ev = msg.msg_type.ClosedNotice;
+            if (pushType.Notice) {
+                // const notice = msg.msg_type.Notice;
+                // const body = JSON.parse(notice.json);
+                // delete notice.json;
+                // notice.body = body;
+                // this.roomCursors[notice.room_id] = notice.seq;
+                // console.log("recv notice", notice);
+                // const handled = this.trigger("notice", notice);
+                // if (handled) {
+                //     return;
+                // }
+            } else if (pushType.Closed) {
+                const ev = pushType.Closed;
                 if(ev.status) {
                     ev.status.from = "server";
                 }
@@ -156,88 +181,142 @@ export class Client {
                 if (handled) {
                     return;
                 }
-            } else if (msg.msg_type.ReadyNotice) {
-                const ev = msg.msg_type.ReadyNotice;
-                const handled = this.trigger("ready-notice", ev);
+            } else if (pushType.UReady) {
+                const body = pushType.UReady;
+                const handled = this.trigger("ready-notice", {
+                    User: body,
+                });
                 if (handled) {
                     return;
                 }
-            } else if (msg.msg_type.Ch) {
-                const ev = msg.msg_type.Ch;
-                const handled = this.trigger("ch-notice", ev);
+            } else if (pushType.RReady) {
+                const body = pushType.RReady;
+                const handled = this.trigger("ready-notice", {
+                    Room: body,
+                });
                 if (handled) {
                     return;
                 }
-            } else if (msg.msg_type.P1) {
-                const ev = msg.msg_type.P1;
-                const handled = this.handlePush(ev);
-
-                this.ws?.send(JSON.stringify({
-                    msg_id: this.msgIdCounter++,
-                    typ: {
-                        Ack: {
-                            seq: this.ackSeq,
-                        },
-                    }
-                }));
-
+            } else if (pushType.UInit) {
+                const body = pushType.UInit;
+                const handled = this.trigger("user-init", body);
+                if (handled) {
+                    return;
+                }
+            } else if (pushType.UFull) {
+                const body = pushType.UFull;
+                const handled = this.trigger("notice", {
+                    room_id: this.opts.roomId,
+                    seq: packet.sn,
+                    body: {User: body},
+                });
+                if (handled) {
+                    return;
+                }
+            } else if (pushType.UTree) {
+                const body = pushType.UTree;
+                const handled = this.trigger("notice", {
+                    room_id: this.opts.roomId,
+                    seq: packet.sn,
+                    body: {UTree: body},
+                });
+                if (handled) {
+                    return;
+                }
+            } else if (pushType.RTree) {
+                const body = pushType.RTree;
+                const handled = this.trigger("notice", {
+                    room_id: this.opts.roomId,
+                    seq: packet.sn,
+                    body: {RTree: body},
+                });
+                if (handled) {
+                    return;
+                }
+            } else if (pushType.Chat) {
+                const body = pushType.Chat;
+                const handled = this.trigger("chat", body);
                 if (handled) {
                     return;
                 }
             }
+            
+            // else if (msg.msg_type.Ch) {
+            //     const ev = msg.msg_type.Ch;
+            //     const handled = this.trigger("ch-notice", ev);
+            //     if (handled) {
+            //         return;
+            //     }
+            // } else if (msg.msg_type.P1) {
+            //     const ev = msg.msg_type.P1;
+            //     const handled = this.handlePush(ev);
 
-            console.warn("Unhandle msg", msg);
+            //     this.ws?.send(JSON.stringify({
+            //         msg_id: this.msgIdCounter++,
+            //         typ: {
+            //             Ack: {
+            //                 seq: this.ackSeq,
+            //             },
+            //         }
+            //     }));
+
+            //     if (handled) {
+            //         return;
+            //     }
+            // }
+
+            console.warn("Unhandle packet", packet);
         }
     }
 
-    private handlePush(ev: any) : boolean {
-        const body = JSON.parse(ev.body);
-        this.ackSeq = ev.seq;
+    // private handlePush(ev: any) : boolean {
+    //     const body = JSON.parse(ev.body);
+    //     this.ackSeq = ev.seq;
 
-        enum BodyType {
-            UserInit = 1,
-            UserState = 2,
-            UserTree = 3,
-            UserReady = 4,
-            RoomTree = 5,
-            RoomReady = 6,
-            Chat = 7,
-        }
+    //     enum BodyType {
+    //         UserInit = 1,
+    //         UserState = 2,
+    //         UserTree = 3,
+    //         UserReady = 4,
+    //         RoomTree = 5,
+    //         RoomReady = 6,
+    //         Chat = 7,
+    //     }
 
-        if (ev.btype === BodyType.UserInit) {
-            return this.trigger("user-init", body);
-        } else if (ev.btype === BodyType.UserState) {
-            return this.trigger("notice", {
-                room_id: this.opts.roomId,
-                seq: ev.seq,
-                body: {User: body},
-            });
-        } else if (ev.btype === BodyType.UserTree) {
-            return this.trigger("notice", {
-                room_id: this.opts.roomId,
-                seq: ev.seq,
-                body: {UTree: body},
-            });
-        } else if (ev.btype == BodyType.RoomTree) {
-            return this.trigger("notice", {
-                room_id: this.opts.roomId,
-                seq: ev.seq,
-                body: {RTree: body},
-            });
-        } else if (ev.btype === BodyType.RoomReady) {
-            return this.trigger("ready-notice", {
-                Room: body,
-            });
-        } else if (ev.btype === BodyType.UserReady) {
-            return this.trigger("ready-notice", {
-                User: body,
-            });
-        } else if (ev.btype === BodyType.Chat) {
-            return this.trigger("chat", body);
-        } else {
-            return false;
-        }
-    }
+    //     if (ev.btype === BodyType.UserInit) {
+    //         return this.trigger("user-init", body);
+    //     } else if (ev.btype === BodyType.UserState) {
+    //         return this.trigger("notice", {
+    //             room_id: this.opts.roomId,
+    //             seq: ev.seq,
+    //             body: {User: body},
+    //         });
+    //     } else if (ev.btype === BodyType.UserTree) {
+    //         return this.trigger("notice", {
+    //             room_id: this.opts.roomId,
+    //             seq: ev.seq,
+    //             body: {UTree: body},
+    //         });
+    //     } else if (ev.btype == BodyType.RoomTree) {
+    //         return this.trigger("notice", {
+    //             room_id: this.opts.roomId,
+    //             seq: ev.seq,
+    //             body: {RTree: body},
+    //         });
+    //     } else if (ev.btype === BodyType.RoomReady) {
+    //         return this.trigger("ready-notice", {
+    //             Room: body,
+    //         });
+    //     } else if (ev.btype === BodyType.UserReady) {
+    //         return this.trigger("ready-notice", {
+    //             User: body,
+    //         });
+    //     } else if (ev.btype === BodyType.Chat) {
+    //         return this.trigger("chat", body);
+    //     } else {
+    //         return false;
+    //     }
+    // }
 
     private handleError(event: Event) {
         console.error("WebSocket error", event);
@@ -388,6 +467,15 @@ export class Client {
         this.tryKickConnect(true);
     }
 
+    private getSendAck(): number|undefined {
+        if (this.sentAckSn < this.recvSn) {
+            this.sentAckSn = this.recvSn;
+            return this.recvSn;
+        } else {
+            return undefined
+        }
+    }
+
     public async invoke(req: any, origin: string): Promise<any> {
         return new Promise((resolve, reject) => {
             if(!this.ws) {
@@ -396,10 +484,17 @@ export class Client {
             }
 
             const msg_id = this.msgIdCounter++;
-            req.msg_id = msg_id;
+            // req.msg_id = msg_id;
+
+            const packet = {
+                sn: msg_id, 
+                typ: PacketType.Request,
+                body: JSON.stringify(req),
+                ack: this.getSendAck(),
+            };
             
             this.pendingRequests.set(msg_id, { resolve, reject, origin });
-            this.ws.send(JSON.stringify(req));
+            this.ws.send(JSON.stringify(packet));
         });
     }
 
@@ -444,7 +539,7 @@ export class Client {
                     sessionId: this.sessionId,
                 });
             } else {
-                // 应该走不到这里
+                // 应该走不到这里，错误会抛异常
                 this.triggerClosed(status.code, status.reason, "server");
             }
         } catch(err) {
@@ -472,14 +567,6 @@ export class Client {
                 },
             }
         }, "req_open_session");
-
-        // const status = rsp.Open.status ?? {code: 0, reason: ""};
-        // if (status.code === 0) {
-        //     this.sessionId = rsp.Open.session_id;
-        //     this.roomCursors[roomId] = 0;
-        // } else {
-
-        // }
 
         return rsp.Open;
     }
@@ -775,3 +862,11 @@ export class Client {
     }
 }
 
+
+enum PacketType {
+    Request = 3,
+    Response = 4,
+    Push0 = 5,  // 不需要回 ack
+    Push1 = 6,  // 不需要立即回 ack
+    Push2 = 7,  // 尽可能快回 ack
+}
