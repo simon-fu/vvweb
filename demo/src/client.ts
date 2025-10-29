@@ -78,12 +78,25 @@ export class Client {
         resolve: (value: any) => void; 
         reject: (reason?: any) => void;
     }>;
-    private msgIdCounter: number;
+    
+    private inflights: {
+        sn: number,
+        packet: string,
+    }[] = [];
+    private headIndex: number = 0;
+    // private sendIndex: number = 0;
+
+    private msgIdCounter: number = 0;
     private sessionId?: string;
     // private ackSeq: number = 0;
     private recvSn: number = 0;
     private sentAckSn: number = 0;
     
+    private pendingFirst? : {
+        origin: string;
+        resolve: (value: any) => void; 
+        reject: (reason?: any) => void;
+    };
 
 
     private opts: ClientOptions;
@@ -91,14 +104,14 @@ export class Client {
 
     private reconnStartTime: number = 0; // 第一次重连开始时间
 
-    private roomCursors: Record<string, number> = {};
+    // private roomCursors: Record<string, number> = {};
     // const roomCursors: { [roomId: string]: number } = {}; // 等价于 Record<string, number>
 
     constructor(options: ClientOptions) {
         // this.ws = typeof wsOrUrl === "string" ? new WebSocket(wsOrUrl) : wsOrUrl;
 
         this.pendingRequests = new Map();
-        this.msgIdCounter = 1;
+        // this.msgIdCounter = 1;
         this.emitter = new EventEmitter();
 
         this.opts = { ...defaultOptions, ...options };
@@ -108,10 +121,32 @@ export class Client {
 
     private handleMessage(event: MessageEvent) {
         
-        console.log("got msg", event.data);
+        console.log("xfer recv", event.data);
 
         const packet = JSON.parse(event.data);
 
+        const parsedBody = JSON.parse(packet.body);
+        if (packet.ack) {
+            this.ackInflights(packet.ack);
+        }
+
+        
+        if (this.pendingFirst) {
+            const callback = this.pendingFirst;
+            this.pendingFirst = undefined;
+            callback.resolve(parsedBody.typ);
+
+            // const msg_id:number = packet.ack;
+            // if (reconn.sn === msg_id) {
+            //     reconn.resolve(parsedBody.typ);
+            // } else {
+            //     reconn.reject(new Error(`expect reconn ack ${reconn.sn} but ${msg_id}`));
+            // }
+
+            return;
+        }
+
+        // 放在 pendingFirst 是为了忽略第一个 resposne sn
         if (packet.sn) {
             const sn: number = packet.sn;
             if (sn > this.recvSn) {
@@ -119,13 +154,12 @@ export class Client {
 
                 const ack = this.getSendAck();
                 if (ack && this.ws) {
-                    this.ws.send(JSON.stringify({
+                    this.sendData(this.ws, JSON.stringify({
                         ack,
                     }));
                 }
             } 
         }
-
 
         if (packet.typ === PacketType.Response) {
         // if (msg.msg_type.Response) {
@@ -136,8 +170,8 @@ export class Client {
             // const msg_id = response.msg_id;
             // // const { msg_id } = msg.msg_type.Response;
 
-            const response = JSON.parse(packet.body);
-            const msg_id = packet.ack;
+            const response = parsedBody;
+            const msg_id:number = packet.ack;
         
             const pending = this.pendingRequests.get(msg_id);
             if (!pending) {
@@ -146,6 +180,7 @@ export class Client {
             }
             
             this.pendingRequests.delete(msg_id);
+            
 
             const status = response.status;
 
@@ -157,8 +192,8 @@ export class Client {
             }
 
         } else if (packet.typ === PacketType.Push0 || packet.typ === PacketType.Push1 || packet.typ === PacketType.Push2) {
-            const push = JSON.parse(packet.body);
-            const pushType = push.typ;
+            // const push = JSON.parse(packet.body);
+            const pushType = parsedBody.typ;
 
             if (pushType.Notice) {
                 // const notice = msg.msg_type.Notice;
@@ -252,7 +287,7 @@ export class Client {
             //     const handled = this.handlePush(ev);
 
             //     this.ws?.send(JSON.stringify({
-            //         msg_id: this.msgIdCounter++,
+            //         msg_id: this.nextMsgId(),
             //         typ: {
             //             Ack: {
             //                 seq: this.ackSeq,
@@ -318,28 +353,69 @@ export class Client {
     //     }
     // }
 
+    private nextMsgId(): number {
+        this.msgIdCounter += 1;
+        return this.msgIdCounter;
+    }
+
     private handleError(event: Event) {
         console.error("WebSocket error", event);
 
-        for (const [, { reject }] of this.pendingRequests) {
-            reject(new Error("WebSocket error"));
-        }
-        this.pendingRequests.clear();
+        // this.rejectPendings();
     }
 
     private handleClose(event: CloseEvent) {
-        console.log("WebSocket closed", event);
+        console.warn("WebSocket closed", event);
 
-        for (const [, { reject, origin }] of this.pendingRequests) {
-            console.log("reject request, origin", origin);
-            reject(new Error("WebSocket closed [" + origin + "]"));
-        }
-        this.pendingRequests.clear();
+        // this.rejectPendings();
 
         this.trigger("disconnect", {event});
 
         this.tryKickConnect(true);
     }
+
+    private rejectPendings() {
+        for (const [, { reject, origin }] of this.pendingRequests) {
+            console.log("reject request, origin", origin);
+            reject(new Error("WebSocket closed [" + origin + "]"));
+        }
+        this.pendingRequests.clear();
+    }
+
+    private ackInflights(ack: number) {
+        while (this.headIndex < this.inflights.length) {
+            if (this.inflights[this.headIndex].sn <= ack) {
+                this.headIndex += 1;
+            } else {
+                break;
+            }
+        }
+
+        if (this.headIndex >= this.inflights.length) {
+            this.clearInflights();
+        }
+    }
+
+    private resendInflights(ws: WebSocket) {
+        let index = this.headIndex;
+        while (index < this.inflights.length) {
+            this.sendData(ws, this.inflights[index].packet);
+            index += 1;
+        }
+    }
+
+    private clearInflights() {
+        this.inflights = [];
+        this.headIndex = 0;
+    }
+
+
+    private sendData(ws: WebSocket, json: string) {
+        console.debug("xfer send", json);
+        ws.send(json);
+    }
+
+
 
     private cleanUp() {
         if(this.ws) {
@@ -353,7 +429,11 @@ export class Client {
 
         this.sessionId = undefined;
         this.closed = true;
+
         // this.url = undefined;
+
+        this.clearInflights();
+        this.rejectPendings();
     }
 
     private tryKickConnect(reconn: boolean) {
@@ -432,9 +512,9 @@ export class Client {
 
                 try {
                     if(!this.sessionId) {
-                        await this.open_session();
+                        await this.open_session(ws);
                     } else {
-                        await this.reconn_session(this.sessionId);
+                        await this.reconn_session(ws, this.sessionId);
                     }
                     this.reconnStartTime = 0;
                 } catch (err) {
@@ -483,19 +563,50 @@ export class Client {
                 return;
             }
 
-            const msg_id = this.msgIdCounter++;
-            // req.msg_id = msg_id;
+            // const msg_id = this.msgIdCounter++;
+            // // req.msg_id = msg_id;
 
-            const packet = {
-                sn: msg_id, 
-                typ: PacketType.Request,
-                body: JSON.stringify(req),
-                ack: this.getSendAck(),
-            };
+            // const packet = {
+            //     sn: msg_id, 
+            //     typ: PacketType.Request,
+            //     body: JSON.stringify(req),
+            //     ack: this.getSendAck(),
+            // };
             
+            // const json = JSON.stringify(packet)
+
+            // // this.ws.send(json);
+            // this.sendJson(this.ws, json);
+
+            const msg_id = this.nextMsgId(); // this.msgIdCounter++;
+            const json = this.sendRequest(this.ws, msg_id, req);
+
             this.pendingRequests.set(msg_id, { resolve, reject, origin });
-            this.ws.send(JSON.stringify(packet));
+            this.inflights.push({
+                sn: msg_id,
+                packet: json,
+            });
         });
+    }
+
+    private sendRequest(ws: WebSocket, sn: number|undefined, req: any): string {
+
+        // const msg_id = this.msgIdCounter++;
+        // req.msg_id = msg_id;
+
+        const packet = {
+            sn, 
+            typ: PacketType.Request,
+            body: JSON.stringify(req),
+            ack: this.getSendAck(),
+        };
+        
+        const json = JSON.stringify(packet)
+
+        // ws.send(json);
+        this.sendData(ws, json);
+
+        return json;
     }
 
     // public async try_invoke(req: any): Promise<Result<any, Error>> {
@@ -522,9 +633,9 @@ export class Client {
         return this.emitter.emit(event, data);
     }
 
-    private async open_session() {
+    private async open_session(ws: WebSocket,) {
         try {
-            const rsp = await this.req_open_session();
+            const rsp = await this.req_open_session(ws);
             console.log("open session response", rsp);
 
             if(this.closed) {
@@ -534,7 +645,7 @@ export class Client {
             const status = rsp.status ?? {code: 0, reason: ""};
             if (status.code === 0) {
                 this.sessionId = rsp.session_id;
-                this.roomCursors[this.opts.roomId] = 0;
+                // this.roomCursors[this.opts.roomId] = 0;
                 this.trigger("opened", {
                     sessionId: this.sessionId,
                 });
@@ -553,11 +664,30 @@ export class Client {
         }
     }
 
-    private async req_open_session(): Promise<any> {
+    private async req_open_session(ws: WebSocket,): Promise<any> {
+        // const roomId = this.opts.roomId;
+
+        // const rsp = await this.invoke({
+        //     // msg_id: next_msg_id(),
+        //     typ: {
+        //         Open: {
+        //             user_id: this.opts.userId,
+        //             room_id: roomId,
+        //             user_ext: this.opts.userExt,
+        //             user_tree: this.opts.userTree,
+        //         },
+        //     }
+        // }, "req_open_session");
+
+        // return rsp.Open;
+
+
+
         const roomId = this.opts.roomId;
 
-        const rsp = await this.invoke({
-            // msg_id: next_msg_id(),
+        this.sentAckSn = 0;
+
+        this.sendRequest(ws, undefined, {
             typ: {
                 Open: {
                     user_id: this.opts.userId,
@@ -566,33 +696,70 @@ export class Client {
                     user_tree: this.opts.userTree,
                 },
             }
-        }, "req_open_session");
+        });
+
+        const promise: Promise<any> = new Promise((resolve, reject) => {
+            this.pendingFirst = {
+                origin: "req_open_session",
+                resolve, 
+                reject,
+            };
+        });
+
+        const rsp = await promise;
 
         return rsp.Open;
     }
 
-    async reconn_session(sessionId: string): Promise<any> {
-        const room_cursors = Object.entries(this.roomCursors).map(([room_id, seq]) => ({
-            room_id,
-            seq
-        }));
+    async reconn_session(ws: WebSocket, sessionId: string): Promise<any> {
+        // const room_cursors = Object.entries(this.roomCursors).map(([room_id, seq]) => ({
+        //     room_id,
+        //     seq
+        // }));
 
-        const rsp = await this.invoke({
+        // const rsp = await this.invoke({
+        //     typ: {
+        //         Reconn: {
+        //             session_id: sessionId,
+        //             // room_cursors,
+        //             try_seq: 0,
+        //             last_success_seq: 0,
+        //             magic: 20250901,
+        //         },
+        //     }
+        // }, "reconn_session");
+
+        this.sentAckSn = 0;
+
+        this.sendRequest(ws, undefined, {
             typ: {
                 Reconn: {
                     session_id: sessionId,
-                    room_cursors,
+                    // room_cursors,
                     try_seq: 0,
                     last_success_seq: 0,
                     magic: 20250901,
                 },
             }
-        }, "reconn_session");
+        });
+
+        const promise: Promise<any> = new Promise((resolve, reject) => {
+            this.pendingFirst = {
+                origin: "reconn_session",
+                resolve, 
+                reject,
+            };
+        });
+
+        const rsp = await promise;
 
         console.log("reconn_session:", rsp.Reconn);
 
         const status = rsp.Reconn.status ?? {code: 0, reason: ""};
         if (status.code == 0) {
+            
+            this.resendInflights(ws);
+
             this.trigger("reconn-session", {
                 conn_id: rsp.Reconn.conn_id,
             });

@@ -266,12 +266,12 @@ class App {
 
 		vrtc.on(VVRTC.EVENT.DISCONNECT, async (obj) => {
 			console.log("on DISCONNECTED: ", obj);
-			logViewer.error(`Disconnect. event [${obj}]`);
+			logViewer.error(`Disconnect`);
 		});
 
 		vrtc.on(VVRTC.EVENT.RECONN_SESSION, async (obj) => {
 			console.log("on RECONN_SESSION: ", obj);
-			logViewer.info(`Reconnect session. event [${JSON.stringify(obj)}]`);
+			logViewer.info(`Reconnect session [${JSON.stringify(obj)}]`);
 		});
 
 		vrtc.on(VVRTC.EVENT.USER_JOIN, ({userId, userExt, userTree}) => {
