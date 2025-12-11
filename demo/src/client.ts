@@ -184,7 +184,7 @@ export class Client {
 
             const status = response.status;
 
-            if (status === null || status.code === 0) {
+            if (!status || status.code === 0) {
                 pending.resolve(response.typ);
             } else {
                 console.error("response status:", status);
