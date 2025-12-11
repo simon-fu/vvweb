@@ -1147,6 +1147,10 @@ export class VVRTC {
                         
                         const newUser = slot.user;
 
+                        if (this.ignoreMe(newUser.id)) {
+                            return;
+                        }
+
                         const cell = {
                             user: {
                                 id: newUser.id,
