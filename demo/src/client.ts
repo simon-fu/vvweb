@@ -131,10 +131,19 @@ export class Client {
         console.log("xfer recv", event.data);
 
         const packet = JSON.parse(event.data);
-
-        const parsedBody = JSON.parse(packet.body);
         if (packet.ack) {
             this.ackInflights(packet.ack);
+        }
+
+        if (packet.body === undefined || packet.body === null) {
+            return;
+        }
+
+        let parsedBody: any;
+        if (typeof packet.body === "string") {
+            parsedBody = JSON.parse(packet.body);
+        } else {
+            parsedBody = packet.body;
         }
 
         
