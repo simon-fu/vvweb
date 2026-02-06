@@ -45,6 +45,8 @@ export interface OptionalOptions {
     maxReconnInterval?: number, // in milliseconds
     maxReconnectTimeout?: number,
     connectTimeout?: number,
+    heartbeatInterval?: number,
+    heartbeatTimeout?: number,
     userExt?: string,
     userTree?: {
         path: string,
@@ -55,10 +57,12 @@ export interface OptionalOptions {
 
 export type ClientOptions = RequiredOptions & OptionalOptions;
 
-const defaultOptions: Required<Pick<OptionalOptions, "maxReconnInterval" | "maxReconnectTimeout" | "connectTimeout">> = {
+const defaultOptions: Required<Pick<OptionalOptions, "maxReconnInterval" | "maxReconnectTimeout" | "connectTimeout" | "heartbeatInterval" | "heartbeatTimeout">> = {
     maxReconnInterval: 1000,
     maxReconnectTimeout: 5000,
     connectTimeout: 3000,
+    heartbeatInterval: 15000,
+    heartbeatTimeout: 10000,
 };
 
 class StatusError extends Error {
@@ -103,6 +107,9 @@ export class Client {
     private closed: boolean = false;
 
     private reconnStartTime: number = 0; // 第一次重连开始时间
+    private heartbeatTimer?: ReturnType<typeof setInterval>;
+    private heartbeatAckTimer?: ReturnType<typeof setTimeout>;
+    private heartbeatWaitingAck: boolean = false;
 
     // private roomCursors: Record<string, number> = {};
     // const roomCursors: { [roomId: string]: number } = {}; // 等价于 Record<string, number>
@@ -171,6 +178,12 @@ export class Client {
             // // const { msg_id } = msg.msg_type.Response;
 
             const response = parsedBody;
+
+            if (response?.typ?.HB) {
+                this.onHeartbeatAck();
+                return;
+            }
+
             const msg_id:number = packet.ack;
         
             const pending = this.pendingRequests.get(msg_id);
@@ -366,6 +379,7 @@ export class Client {
 
     private handleClose(event: CloseEvent) {
         console.warn("WebSocket closed", event);
+        this.stopHeartbeat();
 
         // this.rejectPendings();
 
@@ -418,6 +432,8 @@ export class Client {
 
 
     private cleanUp() {
+        this.stopHeartbeat();
+
         if(this.ws) {
             this.ws.onmessage = null;
             this.ws.onerror = null;
@@ -547,6 +563,71 @@ export class Client {
         this.tryKickConnect(true);
     }
 
+    private startHeartbeat() {
+        this.stopHeartbeat();
+        const interval = this.opts.heartbeatInterval || 0;
+        if (interval <= 0) {
+            return;
+        }
+
+        this.heartbeatTimer = setInterval(() => {
+            this.sendHeartbeat();
+        }, interval);
+    }
+
+    private stopHeartbeat() {
+        if (this.heartbeatTimer) {
+            clearInterval(this.heartbeatTimer);
+            this.heartbeatTimer = undefined;
+        }
+        if (this.heartbeatAckTimer) {
+            clearTimeout(this.heartbeatAckTimer);
+            this.heartbeatAckTimer = undefined;
+        }
+        this.heartbeatWaitingAck = false;
+    }
+
+    private sendHeartbeat() {
+        const ws = this.ws;
+        if (this.closed || !ws || ws.readyState !== WebSocket.OPEN) {
+            return;
+        }
+
+        if (this.heartbeatWaitingAck) {
+            return;
+        }
+
+        this.heartbeatWaitingAck = true;
+        const msg_id = this.nextMsgId();
+        this.sendRequest(ws, msg_id, {
+            typ: {
+                HB: {},
+            },
+        });
+
+        const timeout = this.opts.heartbeatTimeout || 0;
+        if (timeout > 0) {
+            this.heartbeatAckTimer = setTimeout(() => {
+                if (!this.heartbeatWaitingAck) {
+                    return;
+                }
+
+                if (this.ws === ws && ws.readyState === WebSocket.OPEN) {
+                    console.warn("heartbeat timeout, close socket");
+                    ws.close();
+                }
+            }, timeout);
+        }
+    }
+
+    private onHeartbeatAck() {
+        this.heartbeatWaitingAck = false;
+        if (this.heartbeatAckTimer) {
+            clearTimeout(this.heartbeatAckTimer);
+            this.heartbeatAckTimer = undefined;
+        }
+    }
+
     private getSendAck(): number|undefined {
         if (this.sentAckSn < this.recvSn) {
             this.sentAckSn = this.recvSn;
@@ -649,6 +730,7 @@ export class Client {
                 this.trigger("opened", {
                     sessionId: this.sessionId,
                 });
+                this.startHeartbeat();
             } else {
                 // 应该走不到这里，错误会抛异常
                 this.triggerClosed(status.code, status.reason, "server");
@@ -763,6 +845,7 @@ export class Client {
             this.trigger("reconn-session", {
                 conn_id: rsp.Reconn.conn_id,
             });
+            this.startHeartbeat();
         } else {
             this.triggerClosed(status.code, status.reason, "server");
         }
