@@ -47,6 +47,7 @@ export interface OptionalOptions {
     connectTimeout?: number,
     heartbeatInterval?: number,
     heartbeatTimeout?: number,
+    token?: string,
     userExt?: string,
     userTree?: {
         path: string,
@@ -826,6 +827,7 @@ export class Client {
             typ: {
                 Reconn: {
                     session_id: sessionId,
+                    token: this.opts.token,
                     // room_cursors,
                     try_seq: 0,
                     last_success_seq: 0,
